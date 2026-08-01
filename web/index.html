@@ -1,44 +1,116 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Play Angry Birds in your browser using real-time hand gestures. Powered by MediaPipe Hands and HTML5 Canvas." />
-    <title>Angry Birds — Vision Edition</title>
-    
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Inter:wght@400;500;700&display=swap" rel="stylesheet" />
 
-    <!-- MediaPipe CDNs -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description"
+    content="Play Angry Birds in your browser using real-time hand gestures. Powered by MediaPipe Hands and HTML5 Canvas." />
+  <title>Angry Birds — Vision Edition</title>
 
-    <!-- Custom styling stylesheet link is automatically handled by Vite, but we reference style.css here too -->
-    <link rel="stylesheet" href="/src/style.css" />
-  </head>
-  <body>
-    <div id="app">
-      <!-- Main Game Layout -->
-      <main class="game-wrapper">
-        <header class="game-header">
-          <h1 class="logo-text">ANGRY BIRDS <span class="badge">VISION</span></h1>
-          <p class="tagline">Control the slingshot with index finger gestures in real time!</p>
-        </header>
+  <!-- Google Fonts: Fredoka (Cartoon Game Font) & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Outfit:wght@600;800&family=Inter:wght@400;500;700&display=swap"
+    rel="stylesheet" />
 
-        <div class="viewport-container">
-          <!-- Canvas for game graphics -->
-          <canvas id="gameCanvas" width="1280" height="720"></canvas>
-          
-          <!-- Mirrored webcam stream -->
-          <video id="webcam" autoplay playsinline muted></video>
+  <!-- MediaPipe CDNs -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 
-          <!-- Glassmorphic Loading/Start Overlay -->
-          <div id="startOverlay" class="overlay-card active">
-            <h2>Webcam Activation Required</h2>
-            <p>This game uses your webcam and MediaPipe to detect hand gestures. No video is sent to any server; all tracking happens entirely on your local GPU.</p>
-            <button id="startButton" class="btn btn-primary">Start Webcam Game</button>
+  <!-- Custom styling stylesheet -->
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+
+<body>
+  <div id="app">
+    <!-- Main Game Layout -->
+    <main class="game-wrapper">
+
+      <!-- Wooden Sign Plank Header -->
+      <header class="game-header">
+        <div class="wood-banner header-sign">
+          <h1 class="logo-text-game">ANGRY BIRDS <span class="badge-vision">VISION</span></h1>
+          <p class="tagline-game">Gesture-Controlled Slingshot Arcade</p>
+        </div>
+      </header>
+
+      <!-- Top Telemetry & Control HUD Bar -->
+      <div class="hud-bar-top">
+        <!-- Level Selector Buttons -->
+        <div class="level-selector-group">
+          <button id="lvlBtn1" class="btn-3d btn-wood active-lvl" data-lvl="0">🪵 Level 1</button>
+          <button id="lvlBtn2" class="btn-3d btn-wood" data-lvl="1">🪨 Level 2</button>
+          <button id="lvlBtn3" class="btn-3d btn-wood" data-lvl="2">🧊 Level 3</button>
+        </div>
+
+        <!-- Score Cards -->
+        <div class="hud-stats-group">
+          <div class="wood-card stat-box">
+            <span class="stat-icon">⭐</span>
+            <div class="stat-info">
+              <span class="stat-label">SCORE</span>
+              <span id="scoreDisplay" class="stat-value">0</span>
+            </div>
+          </div>
+
+          <div class="wood-card stat-box">
+            <span class="stat-icon">🏆</span>
+            <div class="stat-info">
+              <span class="stat-label">BEST</span>
+              <span id="highScoreDisplay" class="stat-value">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="hud-actions-group">
+          <button id="restartBtn" class="btn-3d btn-gold" title="Restart Level (R)">🔄 RESET</button>
+        </div>
+      </div>
+
+      <!-- 16:9 Main Viewport Container -->
+      <div class="viewport-container">
+        <!-- Main Game Canvas -->
+        <canvas id="gameCanvas" width="1280" height="720"></canvas>
+
+        <!-- Hidden video stream element -->
+        <video id="webcam" autoplay playsinline muted></video>
+
+        <!-- Floating Webcam Camera Telemetry Widget -->
+        <div class="webcam-card">
+          <div class="webcam-header">
+            <span class="cam-dot pulsing"></span>
+            <span class="cam-title">HAND TRACKER</span>
+            <span id="fpsBadge" class="fps-badge">60 FPS</span>
+          </div>
+          <div class="webcam-preview-container">
+            <div id="gestureBadge" class="gesture-badge status-ready">WAITING</div>
+          </div>
+        </div>
+
+        <!-- Cartoon Start / Permission Overlay -->
+        <div id="startOverlay" class="overlay-card active">
+          <div class="wood-card modal-content">
+            <div class="modal-header">
+              <h2>🎯 WEBCAM ARCADE</h2>
+            </div>
+            <p>Control the slingshot using your hand in real time! Uses local GPU MediaPipe tracking — no video data
+              leaves your device.</p>
+
+            <div class="gesture-guide-mini">
+              <div class="guide-item">
+                <span class="guide-icon">👆</span>
+                <span><strong>1-Finger:</strong> Aim Slingshot</span>
+              </div>
+              <div class="guide-item">
+                <span class="guide-icon">🤏</span>
+                <span><strong>3-Finger Pinch:</strong> Lock & Launch</span>
+              </div>
+            </div>
+
+            <button id="startButton" class="btn-3d btn-green btn-large">🎮 START GAME</button>
             <div id="loadingIndicator" class="loading-spinner hidden">
               <div class="spinner"></div>
               <span>Initializing MediaPipe Model...</span>
@@ -46,22 +118,46 @@
           </div>
         </div>
 
-        <!-- Sidebar / Bottom bar for extra instructions -->
-        <footer class="game-footer">
-          <div class="control-card">
-            <h3>How to Play</h3>
-            <ul>
-              <li><strong>Aim Slingshot:</strong> Move your index finger in the screen view. Keep your other fingers closed (isolate the index finger).</li>
-              <li><strong>Arm / Load Bird:</strong> Scroll/slide index finger horizontally in SELECTION mode, then Pinch or Z-Push to lock.</li>
-              <li><strong>Launch Bird:</strong> Aim and drag your index finger, then move it close to the window boundaries or release to launch.</li>
-              <li><strong>Restart:</strong> Press <kbd>R</kbd> to restart.</li>
-              <li><strong>Levels:</strong> Press <kbd>1</kbd>, <kbd>2</kbd>, or <kbd>3</kbd> to switch levels.</li>
-            </ul>
+        <!-- Victory / Level Complete Modal -->
+        <div id="victoryOverlay" class="overlay-card hidden">
+          <div class="wood-card modal-content victory-card">
+            <h2 class="victory-title">LEVEL CLEARED! 🎉</h2>
+            <div class="star-rating">
+              <span class="star star-1">⭐</span>
+              <span class="star star-2">⭐</span>
+              <span class="star star-3">⭐</span>
+            </div>
+            <div class="victory-score-box">
+              <span class="vic-label">FINAL SCORE</span>
+              <span id="victoryScore" class="vic-value">0</span>
+            </div>
+            <div class="modal-actions">
+              <button id="retryVictoryBtn" class="btn-3d btn-gold">🔄 RETRY</button>
+              <button id="nextLevelBtn" class="btn-3d btn-green">▶ NEXT LEVEL</button>
+            </div>
           </div>
-        </footer>
-      </main>
-    </div>
-    
-    <script type="module" src="/src/main.js"></script>
-  </body>
+        </div>
+
+      </div>
+
+      <!-- Bottom Cartoon Control Bar -->
+      <footer class="game-footer">
+        <div class="wood-card footer-card">
+          <div class="key-hints">
+            <span class="key-badge">1</span><span class="key-badge">2</span><span class="key-badge">3</span> Select
+            Level
+            <span class="key-divider">|</span>
+            <span class="key-badge">R</span> Reset Level
+          </div>
+          <div id="hintDisplay" class="game-hint">
+            Pinch 3 fingers or move index finger to aim slingshot!
+          </div>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+
 </html>

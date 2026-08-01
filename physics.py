@@ -1,28 +1,19 @@
 """
 physics.py — Physics constants, gravity, AABB collision, impulse helpers.
+
+All tunable values are imported from config.py.
 """
 
 import math
-
-# ── Constants ─────────────────────────────────────────────────────────────────
-GRAVITY       = 0.45        # px/frame²
-FLOOR_Y       = 660         # ground line (pixel row)
-RESTITUTION   = 0.25        # bounce dampening on floor
-POWER_FACTOR  = 0.10        # pull-distance → launch speed 
-MAX_PULL      = 150         # max slingshot pull radius (px)
-
-PINCH_THRESHOLD       = 30  # px distance thumb↔index for pinch click
-Z_CLICK_THRESHOLD_M   = 0.025  # ~1 inch in MediaPipe Z units (normalised ~= metres)
-Z_CLICK_XY_MAX_PX     = 30    # max allowed X/Y drift during a Z-push to count as click
-
-DAMAGE_FACTOR = 0.3
-BLOCK_HEALTH  = 50
-
-# ── New physics constants ─────────────────────────────────────────────────────
-AIR_DRAG       = 0.998      # velocity multiplier per frame (subtle deceleration)
-BIRD_BOUNCE    = 0.35       # bird floor-bounce restitution coefficient
-BIRD_LINGER    = 90         # frames bird stays active after first ground/block impact
-MIN_DAMAGE_VEL = 4.0        # minimum impact speed required to deal block-block damage
+import random
+from config import (
+    GRAVITY, FLOOR_Y, RESTITUTION, POWER_FACTOR, MAX_PULL,
+    AIR_DRAG, BIRD_BOUNCE, BIRD_LINGER, MIN_DAMAGE_VEL,
+    DAMAGE_FACTOR, BLOCK_HEALTH,
+    PINCH_THRESHOLD, THREE_FINGER_PINCH_RADIUS, INPUT_MOVEMENT_MAGNIFICATION,
+    Z_CLICK_THRESHOLD_M, Z_CLICK_XY_MAX_PX,
+    BLOCK_COLL_X_DAMP, BLOCK_COLL_Y_DAMP, BLOCK_COLL_FRIC, BLOCK_COLL_Y_STACK,
+)
 
 
 # ── AABB collision ─────────────────────────────────────────────────────────────
@@ -39,7 +30,7 @@ def bird_hits_block(bird, block) -> bool:
 
 def bird_hits_ground(bird) -> bool:
     """Check if bird has reached the ground level."""
-    return bird.y + bird.radius >= FLOOR_Y
+    return False
 
 
 # ── Vector helpers ─────────────────────────────────────────────────────────────
@@ -65,12 +56,17 @@ def resolve_block_collision(b1, b2):
     overlap_x = min(b1.right - b2.left, b2.right - b1.left)
     overlap_y = min(b1.bottom - b2.top, b2.bottom - b1.top)
 
-    # Mass from area × density
     is_b1_static = getattr(b1, "is_static", False)
     is_b2_static = getattr(b2, "is_static", False)
     if is_b1_static and is_b2_static:
         return
 
+    # Pre-collision relative velocity for impact damage calculation
+    rel_vx = b1.vx - b2.vx
+    rel_vy = b1.vy - b2.vy
+    impact_speed = math.sqrt(rel_vx ** 2 + rel_vy ** 2)
+
+    # Mass from area × density
     m1 = b1.rect[2] * b1.rect[3] * getattr(b1, "density", 1.0)
     m2 = b2.rect[2] * b2.rect[3] * getattr(b2, "density", 1.0)
     
@@ -100,35 +96,36 @@ def resolve_block_collision(b1, b2):
         # 1-D elastic collision velocity exchange + dampening
         new_v1 = ((m1 - m2) / total_mass) * b1.vx + (2 * m2 / total_mass) * b2.vx
         new_v2 = ((m2 - m1) / total_mass) * b2.vx + (2 * m1 / total_mass) * b1.vx
-        b1.vx = new_v1 * 0.8
-        b2.vx = new_v2 * 0.8
+        b1.vx = new_v1 * BLOCK_COLL_X_DAMP
+        b2.vx = new_v2 * BLOCK_COLL_X_DAMP
     else:
         # ── Resolve along Y ──────────────────────────────────────────
         if b1.cy < b2.cy:
             b1.rect[1] -= overlap_y * r1
             b2.rect[1] += overlap_y * r2
             if b1.vy > 0:
-                b1.vy *= 0.1
+                b1.vy *= BLOCK_COLL_Y_STACK
         else:
             b1.rect[1] += overlap_y * r1
             b2.rect[1] -= overlap_y * r2
             if b2.vy > 0:
-                b2.vy *= 0.1
+                b2.vy *= BLOCK_COLL_Y_STACK
 
         new_v1 = ((m1 - m2) / total_mass) * b1.vy + (2 * m2 / total_mass) * b2.vy
         new_v2 = ((m2 - m1) / total_mass) * b2.vy + (2 * m1 / total_mass) * b1.vy
-        b1.vy = new_v1 * 0.5
-        b2.vy = new_v2 * 0.5
+        b1.vy = new_v1 * BLOCK_COLL_Y_DAMP
+        b2.vy = new_v2 * BLOCK_COLL_Y_DAMP
 
         # Friction when resting
-        b1.vx *= 0.7
-        b2.vx *= 0.7
+        b1.vx *= BLOCK_COLL_FRIC
+        b2.vx *= BLOCK_COLL_FRIC
 
-    # Impact damage (only above minimum velocity)
-    rel_vx = b1.vx - b2.vx
-    rel_vy = b1.vy - b2.vy
-    impact_speed = math.sqrt(rel_vx ** 2 + rel_vy ** 2)
+    # Impact damage (only above minimum velocity) using pre-collision impact_speed
     if impact_speed > MIN_DAMAGE_VEL:
-        damage = impact_speed * 2
-        b1.health -= damage
-        b2.health -= damage
+        damage = (impact_speed - MIN_DAMAGE_VEL) * 2.5
+        if not is_b1_static:
+            b1.health -= damage
+            b1.angular_vel += random.uniform(-1.5, 1.5) * (impact_speed / 5.0)
+        if not is_b2_static:
+            b2.health -= damage
+            b2.angular_vel += random.uniform(-1.5, 1.5) * (impact_speed / 5.0)

@@ -8,6 +8,7 @@ import numpy as np
 import math
 import random
 from physics import GRAVITY, FLOOR_Y, RESTITUTION, DAMAGE_FACTOR, BLOCK_HEALTH
+from config import BLOCK_VX_TRANSFER, BLOCK_VY_TRANSFER, DEBRIS_FADE_FRAMES
 
 # ── Material definitions ──────────────────────────────────────────────────────
 # BGR colour values; health/density per material
@@ -95,17 +96,12 @@ class Block:
         self.rect[0] += self.vx
         self.rect[1] += self.vy
         self.angle    += self.angular_vel
+        self.angular_vel *= 0.90
+        if abs(self.angular_vel) < 0.01:
+            self.angular_vel = 0.0
 
         # Floor collision
-        if self.bottom >= FLOOR_Y:
-            self.rect[1] = FLOOR_Y - self.rect[3]
-            if abs(self.vy) > 1.0:
-                self.vy = -self.vy * RESTITUTION
-            else:
-                self.vy = 0.0
-                self.on_ground = True
-            self.vx *= 0.85
-            self.angular_vel *= 0.75
+        # Removed since floor is disabled in testing
 
     def apply_impulse(self, bird_vx: float, bird_vy: float, bird_mass: float):
         """Bird hit → damage + physical push."""
@@ -113,9 +109,9 @@ class Block:
         force  = bird_mass * speed
         self.health -= force * DAMAGE_FACTOR
         if not self.is_static:
-            self.vx     += bird_vx * 0.4
-            self.vy     += bird_vy * 0.3
-            self.angular_vel += random.uniform(-4, 4)
+            self.vx     += bird_vx * BLOCK_VX_TRANSFER
+            self.vy     += bird_vy * BLOCK_VY_TRANSFER
+            self.angular_vel += random.uniform(-2.5, 2.5) * max(0.5, speed / 10.0)
             self.on_ground = False
 
     # ── Drawing ──────────────────────────────────────────────────────────────
@@ -146,7 +142,7 @@ class Block:
         grain_col = mat["grain"]
 
         # Fade out debris before it despawns
-        if self.is_debris and self.lifespan > 0 and self.lifespan < 30:
+        if self.is_debris and self.lifespan > 0 and self.lifespan < DEBRIS_FADE_FRAMES:
             alpha = self.lifespan / 30.0
             # Blend with background (18, 18, 28) for simple fade effect
             bg = (18, 18, 28)

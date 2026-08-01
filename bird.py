@@ -14,6 +14,7 @@ import cv2
 import numpy as np
 import math
 from physics import GRAVITY, FLOOR_Y, AIR_DRAG, BIRD_BOUNCE, BIRD_LINGER, magnitude
+from config import TRAIL_LEN, SPEED_LINE_THRESHOLD, IMPACT_POP_DURATION, BIRD_IDLE_SPEED
 
 # Bird type IDs
 RED   = "Red"
@@ -40,7 +41,7 @@ COLOURS = {
 }
 
 # Trail length (number of past positions stored)
-_TRAIL_LEN = 12
+_TRAIL_LEN = TRAIL_LEN
 
 
 class Bird:
@@ -85,24 +86,13 @@ class Bird:
             self.trail.pop(0)
 
         # Floor collision / bounce
-        if self.y + self.radius >= FLOOR_Y:
-            self.y = FLOOR_Y - self.radius
-            if abs(self.vy) > 1.5:
-                self.vy = -self.vy * BIRD_BOUNCE
-            else:
-                self.vy = 0.0
-            self.vx *= 0.85          # ground friction
-
-            if not self.grounded:
-                self.grounded = True
-                self.linger_timer = BIRD_LINGER
-                self.impact_timer = 15   # pop ring on first ground hit
+        # Removed for now
 
         # Linger countdown (after grounding, bird rolls then deactivates)
         if self.grounded:
             self.linger_timer -= 1
             speed = magnitude(self.vx, self.vy)
-            if self.linger_timer <= 0 or speed < 0.3:
+            if self.linger_timer <= 0 or speed < BIRD_IDLE_SPEED:
                 self.active = False
 
         # Impact animation countdown
@@ -159,7 +149,7 @@ class Bird:
     def _draw_speed_lines(self, frame: np.ndarray, cx: int, cy: int, r: int):
         """Short lines behind the bird during fast flight."""
         speed = magnitude(self.vx, self.vy)
-        if speed < 3.0:
+        if speed < SPEED_LINE_THRESHOLD:
             return
         angle = math.atan2(self.vy, self.vx)
         cos_a = math.cos(angle)
@@ -176,7 +166,7 @@ class Bird:
 
     def _draw_impact_pop(self, frame: np.ndarray, cx: int, cy: int, r: int):
         """Expanding ring that fades out over 15 frames."""
-        progress = 1.0 - self.impact_timer / 15.0
+        progress = 1.0 - self.impact_timer / IMPACT_POP_DURATION
         pop_r = int(r + progress * 20)
         alpha_val = max(0, 1.0 - progress)
         col_base = COLOURS[self.kind]

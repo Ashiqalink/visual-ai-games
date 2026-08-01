@@ -33,16 +33,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'visual ai game
 
 from visual_ai import VisionPipeline, GameEngine, CPP_ENGINE_AVAILABLE
 from game import Game
+from config import (
+    FRAME_W, FRAME_H, BG_COLOR,
+    CAM_W, CAM_H, CAM_MARGIN, CAM_BORDER, CAM_BORDER_COLOR,
+    SMOOTH_ALPHA,
+)
 
-# ── Window / canvas resolution ────────────────────────────────────────────────
-FRAME_W = 1280
-FRAME_H = 720
-
-# ── Camera preview box (top-right corner) ─────────────────────────────────────
-CAM_W      = 240
-CAM_H      = 160
-CAM_MARGIN = 12      # gap from window edges
-CAM_BORDER = 2       # border thickness in pixels
+# (Window / canvas constants now imported from config.py)
 
 
 def _paste_cam(canvas: np.ndarray, cam_frame: np.ndarray):
@@ -61,7 +58,7 @@ def _paste_cam(canvas: np.ndarray, cam_frame: np.ndarray):
     cv2.rectangle(canvas,
                   (x0 - CAM_BORDER, y0 - CAM_BORDER),
                   (x1 + CAM_BORDER, y1 + CAM_BORDER),
-                  (80, 200, 255), CAM_BORDER)
+                  CAM_BORDER_COLOR, CAM_BORDER)
 
     canvas[y0:y1, x0:x1] = preview
 
@@ -82,7 +79,7 @@ def main():
         height=FRAME_H,
         camera_index=0,
         # Adaptive EMA smoothing baseline (0.20 provides smooth aiming without lag).
-        smooth_alpha=0.20,
+        smooth_alpha=SMOOTH_ALPHA,
     )
     pipeline.start()
 
@@ -98,15 +95,23 @@ def main():
 
     cam_frame = None          # raw BGR from pipeline (for the preview box only)
     gesture = {
-        "hand_visible":      False,
-        "index_pos":         (0, 0),
-        "pinch_pos":         (0, 0),
-        "is_pinching":       False,
-        "click_just_fired":  False,
-        "is_index_isolated": False,
-        "z_delta":           0.0,
-        "xy_drift":          0.0,
+        "hand_visible":        False,
+        "index_pos":           (0, 0),
+        "thumb_pos":           (0, 0),
+        "middle_pos":          (0, 0),
+        "pinch_pos":           (0, 0),
+        "is_pinching":         False,
+        "click_just_fired":    False,
+        "is_index_isolated":   False,
+        "z_delta":             0.0,
+        "xy_drift":            0.0,
+        "lock_progress":       0.0,
+        "three_finger_locked": False,
+        "locked_fingers":      (False, False, False),
+        "is_3_finger_pinching":False,
     }
+
+    canvas = np.zeros((FRAME_H, FRAME_W, 3), dtype=np.uint8)
 
     while True:
         # ── Pull latest vision data — drain queue so we never stall ───────
@@ -143,10 +148,11 @@ def main():
 
         # ── Game logic ────────────────────────────────────────────────────
         game.update(gesture, key)
+        if hasattr(pipeline, "set_movement_magnification"):
+            pipeline.set_movement_magnification(game._AIM_PULL_GAIN)
 
         # ── Build solid game canvas (no camera bleed-through) ─────────────
-        canvas = np.zeros((FRAME_H, FRAME_W, 3), dtype=np.uint8)
-        canvas[:] = (18, 18, 28)            # deep navy-black background
+        canvas[:] = BG_COLOR            # deep navy-black background
 
         # ── Draw game elements onto canvas ────────────────────────────────
         game.draw(canvas)

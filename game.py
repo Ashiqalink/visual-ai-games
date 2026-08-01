@@ -32,10 +32,21 @@ from physics import (
 )
 import slingshot
 import ui
+from config import (
+    PTS_BLOCK, PTS_DEBRIS,
+    SCORE_POPUP_LIFETIME, SCORE_POPUP_RISE,
+    ARMED_GRACE_FRAMES, MIN_FIRE_PULL, EDGE_MARGIN,
+    AIM_PULL_GAIN, INPUT_MOVEMENT_MAGNIFICATION, AIM_EMA_HOLD, AIM_EMA_MIN, AIM_EMA_MAX,
+    AIM_EMA_JITTER_LO, AIM_EMA_JITTER_HI,
+    SEL_DEBOUNCE_FRAMES, Z_PUSH_DETECT_THRESH,
+    DEBRIS_LIFESPAN, DEBRIS_VEL_SPREAD, DEBRIS_VY_KICK,
+    DEBRIS_CARRY_FACTOR, DEBRIS_HEALTH,
+    PLATFORM_W, PLATFORM_H, PLATFORM_HEALTH,
+    BIRD_STOP_SPEED,
+)
 
-# ── Score constants ───────────────────────────────────────────────────────────
-PTS_BLOCK   = 500     # big block destroyed
-PTS_DEBRIS  = 100     # debris block destroyed
+# ── Score constants ────────────────────────────────────────────────────────────────
+# (imported from config above)
 
 
 # ── Score popup ───────────────────────────────────────────────────────────────
@@ -45,18 +56,18 @@ class ScorePopup:
         self.x = float(x)
         self.y = float(y)
         self.points = points
-        self.timer = 40            # frames to live
+        self.timer = SCORE_POPUP_LIFETIME   # frames to live
 
     def update(self) -> bool:
         """Returns True while still alive."""
-        self.y -= 1.5              # float upward
+        self.y -= SCORE_POPUP_RISE          # float upward
         self.timer -= 1
         return self.timer > 0
 
     def draw(self, frame: np.ndarray):
         if self.timer <= 0:
             return
-        alpha = max(0.0, self.timer / 40.0)
+        alpha = max(0.0, self.timer / SCORE_POPUP_LIFETIME)
         col = (0, int(255 * alpha), int(200 * alpha))
         text = f"+{self.points}"
         x, y = int(self.x), int(self.y)
@@ -171,14 +182,14 @@ def _build_level(level_idx: int) -> list[Block]:
         b.rect[1] += Y_OFF
 
     # Create a static platform for them to rest on (so they don't fall to FLOOR_Y)
-    plat_w = 400
-    plat_h = 30
+    plat_w = PLATFORM_W
+    plat_h = PLATFORM_H
     plat_x = 640 - plat_w / 2
     plat_y = SLING_Y
     platform = Block(plat_x, plat_y, plat_w, plat_h, "wood")
     platform.is_static = True
-    platform.health = 999999
-    platform.max_health = 999999
+    platform.health = PLATFORM_HEALTH
+    platform.max_health = PLATFORM_HEALTH
     blocks.append(platform)
 
     return blocks
@@ -214,14 +225,17 @@ class Game:
         self._smoothed_iy  = float(SLING_Y)
         self._aim_anchor_x = float(SLING_X)
         self._aim_anchor_y = float(SLING_Y)
-        self._AIM_PULL_GAIN = 1.8                       # Pull sensitivity gain (1.8x physical move)
-        self._SMOOTH       = 0.15                       # EMA factor — lower = smoother, less jitter
+        self._AIM_PULL_GAIN = AIM_PULL_GAIN             # Pull sensitivity gain
+        self._SMOOTH        = AIM_EMA_MIN               # EMA factor (base, overridden adaptively)
         # Carousel debounce: require N stable frames before committing selection
         self._sel_candidate: int = 0                   # index being hovered
         self._sel_stable_frames: int = 0               # consecutive frames on same index
-        self._SEL_DEBOUNCE: int = 6                    # frames needed to confirm selection
+        self._SEL_DEBOUNCE: int = SEL_DEBOUNCE_FRAMES  # frames needed to confirm selection
         # Edge-fire guard: only allow edge-exit firing after hand was inside frame
         self._armed_inside: bool = False
+        # 3-Finger Pinch Aiming state flags
+        self._is_aiming: bool = False
+        self._was_unpinched_after_armed: bool = False
         # Scoring
         self.score_popups: list[ScorePopup] = []
 
@@ -233,7 +247,8 @@ class Game:
         -----------------
         hand_visible, index_pos, pinch_pos, is_pinching, click_just_fired
         """
-        # Store ToF depth telemetry
+        # Store gesture & ToF depth telemetry
+        self._last_gesture = gesture
         self._tof_active   = gesture.get("tof_active", False)
         self._tof_z_m      = gesture.get("tof_z_m", 0.0)
         self._depth_source = gesture.get("depth_source", "RGB MediaPipe Estimate")
@@ -249,6 +264,12 @@ class Game:
             self.score = 0
             self.reset()
             return
+
+        # Magnification controls: + / = to increase, - / _ to decrease
+        if key in (ord('+'), ord('=')):
+            self._AIM_PULL_GAIN = round(min(5.0, self._AIM_PULL_GAIN + 0.5), 1)
+        elif key in (ord('-'), ord('_')):
+            self._AIM_PULL_GAIN = round(max(0.5, self._AIM_PULL_GAIN - 0.5), 1)
 
         # ── Slingshot animation tick ──────────────────────────────────────
         slingshot.tick()
@@ -282,11 +303,11 @@ class Game:
                                            b.rect[1] + j * hh,
                                            hw, hh,
                                            material=b.material)
-                            debris.vx = (random.random() * 2.0 - 1.0) * 10.0 + b.vx * 0.5
-                            debris.vy = (random.random() * 2.0 - 1.0) * 10.0 + b.vy * 0.5 - 2.0
-                            debris.health = 50
+                            debris.vx = (random.random() * 2.0 - 1.0) * DEBRIS_VEL_SPREAD + b.vx * DEBRIS_CARRY_FACTOR
+                            debris.vy = (random.random() * 2.0 - 1.0) * DEBRIS_VEL_SPREAD + b.vy * DEBRIS_CARRY_FACTOR - DEBRIS_VY_KICK
+                            debris.health = DEBRIS_HEALTH
                             debris.is_debris = True
-                            debris.lifespan = 90  # 90 frames (~3 seconds)
+                            debris.lifespan = DEBRIS_LIFESPAN
                             new_blocks.append(debris)
 
         if new_blocks:
@@ -305,8 +326,6 @@ class Game:
 
     def draw(self, frame: np.ndarray):
         """Render everything onto frame (modifies in-place)."""
-        # Ground / sky tint
-        ui.draw_ground(frame, FLOOR_Y)
 
         # Blocks
         for b in self.blocks:
@@ -326,9 +345,10 @@ class Game:
             bird.draw(frame)
             slingshot.draw_front(frame, bird_pos=bp, pull_dist=pull_d)
 
-            # Trajectory preview
-            vx, vy = self._launch_velocity()
-            ui.draw_trajectory(frame, bird.x, bird.y, vx, vy)
+            # Trajectory preview (only drawn while actively aiming with pinch)
+            if self._is_aiming and pull_d > 5:
+                vx, vy = self._launch_velocity()
+                ui.draw_trajectory(frame, bird.x, bird.y, vx, vy)
 
         elif self.state == "FLIGHT":
             slingshot.draw(frame, bird_pos=None)
@@ -358,6 +378,8 @@ class Game:
             tof_active=getattr(self, "_tof_active", False),
             tof_z_m=getattr(self, "_tof_z_m", 0.0),
             depth_source=getattr(self, "_depth_source", "RGB MediaPipe Estimate"),
+            gesture=getattr(self, "_last_gesture", None),
+            magnification=self._AIM_PULL_GAIN,
         )
 
     # ── State handlers ────────────────────────────────────────────────────────
@@ -369,29 +391,43 @@ class Game:
         # Scroll carousel with X position.
         # Pipeline already mirrors the frame before MediaPipe, so raw index_pos
         # is already in display-space — no extra flip needed.
-        raw_ix = g["index_pos"][0]
-        ix = raw_ix                                # display-space X (no extra mirror)
+        raw_ix, raw_iy = g.get("pinch_pos", g["index_pos"])
+        ix, iy = float(raw_ix), float(raw_iy)
+
         total = len(self.bird_queue)
         if total == 0:
             self.state = "DONE"
             return
-        norm_x = ix / self.W                       # 0..1
-        candidate = int(norm_x * total)
-        candidate = max(0, min(total - 1, candidate))
 
-        # Debounce: commit only after _SEL_DEBOUNCE consecutive frames on same bird
-        if candidate == self._sel_candidate:
-            self._sel_stable_frames += 1
-        else:
-            self._sel_candidate = candidate
-            self._sel_stable_frames = 1            # reset counter on change
+        # Carousel area parameters (top-center panel: y <= 220)
+        spacing = 120
+        panel_w = spacing * total + 80
+        panel_x = self.W // 2 - panel_w // 2
 
-        if self._sel_stable_frames >= self._SEL_DEBOUNCE:
-            self.selected_idx = self._sel_candidate
+        # Selecting bird can only be chosen once cursor goes into the carousel area
+        in_selection_area = (iy <= 220)
 
-        # Detect click: Z-push (or pinch, handled identically by tracker)
-        if g["click_just_fired"]:
-            self._last_click_mode = "Z-PUSH"
+        if in_selection_area:
+            rel_x = (ix - panel_x) / panel_w
+            candidate = int(rel_x * total)
+            candidate = max(0, min(total - 1, candidate))
+
+            # Debounce: commit only after _SEL_DEBOUNCE consecutive frames on same bird
+            if candidate == self._sel_candidate:
+                self._sel_stable_frames += 1
+            else:
+                self._sel_candidate = candidate
+                self._sel_stable_frames = 1            # reset counter on change
+
+            if self._sel_stable_frames >= self._SEL_DEBOUNCE:
+                self.selected_idx = self._sel_candidate
+
+        # Detect 1st pinch trigger: 3-finger pinch selection (ONLY allowed inside selection area)
+        is_pinching = g.get("is_pinching", False) or g.get("is_3_finger_pinching", False)
+        click_trigger = (g.get("click_just_fired", False) or is_pinching) and in_selection_area
+
+        if click_trigger:
+            self._last_click_mode = "3-FINGER PINCH"
             self._last_click_fired = True
             if total > 0:
                 kind = self.bird_queue[self.selected_idx]
@@ -400,7 +436,7 @@ class Game:
                 self.current_bird.y = float(SLING_Y)
                 # Anchor relative aiming to current hand position
                 if g.get("hand_visible", False):
-                    anc_x, anc_y = g["index_pos"]
+                    anc_x, anc_y = g.get("pinch_pos", g["index_pos"])
                 else:
                     anc_x, anc_y = float(SLING_X), float(SLING_Y)
                 self._aim_anchor_x = float(anc_x)
@@ -408,24 +444,27 @@ class Game:
                 self._smoothed_ix  = float(anc_x)
                 self._smoothed_iy  = float(anc_y)
                 self._armed_inside = False         # reset edge-fire guard
-                self._armed_timer = 60              # 60 frame grace period  
+                self._armed_timer = 0              # immediate readiness
+                self._is_aiming = False            # bird stays idle until 2nd pinch
+                self._was_unpinched_after_armed = False # require release before 2nd pinch
                 self.state = "ARMED"
         else:
             self._last_click_fired = False
 
     def _update_armed(self, g: dict):
         """
-        Aiming: relative index fingertip displacement from click anchor controls pull.
-        Pipeline already mirrors the frame, so no extra X-flip needed.
-
-        Controls summary
-        ----------------
-        - Move hand LEFT / RIGHT / DOWN  →  aim the bird
-        - Z-push OR move to screen edge  →  FIRE
-          (edge-fire only armed after hand enters the safe inner zone first)
+        Pinch Slingshot Controls:
+        1. On selection, bird stays IDLE in slingshot at (SLING_X, SLING_Y).
+        2. Moving hand without pinching does NOT pull the slingshot.
+        3. Pinching (3-finger pinch) a 2nd time activates AIMING & locks the anchor.
+        4. Moving hand while pinching pulls the slingshot rubber band.
+        5. Releasing the pinch launches the bird (if pull >= MIN_FIRE_PULL).
         """
         bird = self.current_bird
-        margin = 40           # px from edge — larger = less accidental edge-fires
+        if bird is None:
+            return
+
+        margin = EDGE_MARGIN      # px from edge — larger = less accidental edge-fires
 
         if g.get("click_just_fired", False):
             self._last_click_fired = True
@@ -435,12 +474,53 @@ class Game:
         if self._armed_timer > 0:
             self._armed_timer -= 1
 
-        if g["hand_visible"]:
-            raw_ix, raw_iy = g["index_pos"]
-            ix = raw_ix
-            iy = raw_iy
+        is_pinching = g.get("is_pinching", False) or g.get("is_3_finger_pinching", False)
+
+        # 1. Require user to unpinch at least once after entering ARMED before aiming can begin
+        if not self._was_unpinched_after_armed:
+            if not is_pinching:
+                self._was_unpinched_after_armed = True
+            bird.x = float(SLING_X)
+            bird.y = float(SLING_Y)
+            return
+
+        # 2. Handle UNPINCHED state
+        if not is_pinching:
+            if self._is_aiming:
+                # User was aiming and just RELEASED the pinch -> FIRE!
+                rel_dx = (self._smoothed_ix - self._aim_anchor_x) * self._AIM_PULL_GAIN
+                rel_dy = (self._smoothed_iy - self._aim_anchor_y) * self._AIM_PULL_GAIN
+                dist = math.sqrt(rel_dx * rel_dx + rel_dy * rel_dy)
+
+                if dist >= MIN_FIRE_PULL:
+                    self._fire_bird(bird)
+                    self._is_aiming = False
+                    return
+                else:
+                    # Insufficient pull distance: cancel aiming, return to idle
+                    self._is_aiming = False
+                    bird.x = float(SLING_X)
+                    bird.y = float(SLING_Y)
+            else:
+                # Stay idle in slingshot
+                bird.x = float(SLING_X)
+                bird.y = float(SLING_Y)
+            return
+
+        # 3. Handle PINCHED state (actively aiming)
+        if g.get("hand_visible", False):
+            raw_ix, raw_iy = g.get("pinch_pos", g["index_pos"])
+            ix, iy = float(raw_ix), float(raw_iy)
         else:
             ix, iy = self._smoothed_ix, self._smoothed_iy
+
+        # Lock anchor on first frame of 2nd pinch
+        if not self._is_aiming:
+            self._is_aiming = True
+            self._aim_anchor_x = ix
+            self._aim_anchor_y = iy
+            self._smoothed_ix  = ix
+            self._smoothed_iy  = iy
 
         # Mark hand as "inside" once it's away from all edges
         if (margin < ix < self.W - margin and margin < iy < self.H - margin):
@@ -449,15 +529,10 @@ class Game:
         at_edge = (ix < margin or ix > self.W - margin
                    or iy < margin or iy > self.H - margin)
 
-        # ── Adaptive EMA smooth (dampened during Z push to freeze aim angle) ──
-        z_pushing = g.get("z_delta", 0.0) > 0.015
-        if z_pushing:
-            alpha = 0.02
-        else:
-            # Scale alpha smoothly based on delta distance to remove micro-jitter when holding still
-            d_dist = math.sqrt((ix - self._smoothed_ix) ** 2 + (iy - self._smoothed_iy) ** 2)
-            scale = max(0.0, min(1.0, (d_dist - 2.0) / 18.0))
-            alpha = 0.08 + scale * 0.14                  # 0.08 for fine aiming, 0.22 for fast drag
+        # ── Adaptive EMA smooth ──
+        d_dist = math.sqrt((ix - self._smoothed_ix) ** 2 + (iy - self._smoothed_iy) ** 2)
+        scale = max(0.0, min(1.0, (d_dist - AIM_EMA_JITTER_LO) / (AIM_EMA_JITTER_HI - AIM_EMA_JITTER_LO)))
+        alpha = AIM_EMA_MIN + scale * (AIM_EMA_MAX - AIM_EMA_MIN)
 
         self._smoothed_ix = alpha * ix + (1 - alpha) * self._smoothed_ix
         self._smoothed_iy = alpha * iy + (1 - alpha) * self._smoothed_iy
@@ -477,16 +552,11 @@ class Game:
         bird.x = SLING_X + dx
         bird.y = SLING_Y + dy
 
-        # Firing triggers — ONLY checked AFTER the arming grace period has expired AND minimum pull is reached!
-        if self._armed_timer <= 0 and dist >= 15:
-            # 1. Edge-exit fire
+        # Edge-exit fire fallback while aiming
+        if self._armed_timer <= 0 and dist >= MIN_FIRE_PULL:
             if at_edge and self._armed_inside:
                 self._fire_bird(bird)
-                return
-
-            # 2. Click (Z-push or pinch) fire
-            if g["click_just_fired"]:
-                self._fire_bird(bird)
+                self._is_aiming = False
                 return
 
     def _fire_bird(self, bird: Bird):
@@ -538,13 +608,13 @@ class Game:
             bird.vy *= factor
 
             # If bird is almost stopped after hit, start grounding
-            if magnitude(bird.vx, bird.vy) < 2.0 and not bird.grounded:
+            if magnitude(bird.vx, bird.vy) < BIRD_STOP_SPEED and not bird.grounded:
                 bird.grounded = True
                 bird.linger_timer = BIRD_LINGER // 2
 
         # ── Bird deactivated or off-screen → next bird ────────────────────
         if (not bird.active
-                or bird.y > FLOOR_Y + 50
+                or bird.y > self.H + 50
                 or bird.x > self.W + 100
                 or bird.x < -100):
             self._next_bird()

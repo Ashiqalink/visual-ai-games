@@ -28,7 +28,7 @@ export class HandTracker {
     this.pinchActive = false;    // debounced pinch state
 
     // ── Z-Push Detection ─────────────────────────────────────────────────────
-    this.Z_CLICK_THRESHOLD_M = 0.025;
+    this.Z_CLICK_THRESHOLD_M = 0.012;
     this.Z_CLICK_XY_MAX_PX   = 35;
     this.zHistoryLen          = 10;
     this.zCooldownFrames      = 25;

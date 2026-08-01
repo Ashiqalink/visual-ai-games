@@ -1,3 +1,4 @@
+
 """
 slingshot.py — Slingshot rendering: handle, fork arms, elastic bands.
 
@@ -11,24 +12,28 @@ Improvements:
 import cv2
 import numpy as np
 import math
-
+from config import (
+    SLING_X, SLING_Y,
+    FORK_SPREAD_X, FORK_RISE_Y, HANDLE_DROP_Y,
+    SLING_WOOD_COLOR, SLING_WOOD_DARK,
+    SLING_ELASTIC_NEAR, SLING_ELASTIC_FAR,
+    SLING_SNAP_DURATION,
+)
 
 # Slingshot anchor (fork centre, where the bird sits)
-SLING_X    = 280
-SLING_Y    = 440
-FORK_LEFT  = (SLING_X - 30, SLING_Y - 40)
-FORK_RIGHT = (SLING_X + 30, SLING_Y - 40)
-HANDLE_BOT = (SLING_X, SLING_Y + 140)
+FORK_LEFT  = (SLING_X - FORK_SPREAD_X, SLING_Y - FORK_RISE_Y)
+FORK_RIGHT = (SLING_X + FORK_SPREAD_X, SLING_Y - FORK_RISE_Y)
+HANDLE_BOT = (SLING_X, SLING_Y + HANDLE_DROP_Y)
 
-WOOD_COL  = (30, 100, 160)   # BGR dark brown
-WOOD_DARK = (15,  60, 100)
-ELASTIC_COL_NEAR = (0, 140, 255)   # orange
-ELASTIC_COL_FAR  = (0,  40, 220)   # red when stretched
+WOOD_COL  = SLING_WOOD_COLOR
+WOOD_DARK = SLING_WOOD_DARK
+ELASTIC_COL_NEAR = SLING_ELASTIC_NEAR
+ELASTIC_COL_FAR  = SLING_ELASTIC_FAR
 
 # ── Module-level snap-back state ──────────────────────────────────────────────
 _snap_timer: int = 0
 _snap_from: tuple = (SLING_X, SLING_Y)
-_SNAP_DURATION: int = 8
+_SNAP_DURATION: int = SLING_SNAP_DURATION
 
 
 def trigger_snap(bird_pos: tuple):

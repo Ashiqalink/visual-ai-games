@@ -13,6 +13,8 @@ import mediapipe as mp
 import numpy as np
 from physics import (
     PINCH_THRESHOLD,
+    THREE_FINGER_PINCH_RADIUS,
+    INPUT_MOVEMENT_MAGNIFICATION,
     Z_CLICK_THRESHOLD_M,
     Z_CLICK_XY_MAX_PX,
     distance,
@@ -54,6 +56,12 @@ class HandTracker:
         self._locked_pos: tuple[float, float] | None = None
         self._lost_frames: int = 0
 
+        # 3-finger lock state
+        self._lock_progress: float = 0.0
+        self._three_finger_locked: bool = False
+        self._was_3_pinching: bool = False
+        self.magnification: float = INPUT_MOVEMENT_MAGNIFICATION
+
         # Exposed result
         self.gesture: dict = self._empty_gesture()
         self.tof_simulated: bool = False
@@ -73,7 +81,7 @@ class HandTracker:
             return True, z_m, label
         return False, 0.0, "RGB MediaPipe Estimate"
 
-    def process(self, bgr_frame: np.ndarray) -> dict:
+    def process(self, bgr_frame: np.ndarray, magnification: float | None = None) -> dict:
         """Run detection on one BGR frame (already flipped).  Returns gesture."""
         rgb = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
         result = self._hands.process(rgb)
@@ -90,24 +98,70 @@ class HandTracker:
                 return int(lm[lm_id].x * self.W), int(lm[lm_id].y * self.H)
             thumb_tip  = px(4)
             index_tip  = px(8)
-            midpoint   = (
-                (thumb_tip[0] + index_tip[0]) // 2,
-                (thumb_tip[1] + index_tip[1]) // 2,
-            )
+            middle_tip = px(12)
+            c_x = (thumb_tip[0] + index_tip[0] + middle_tip[0]) // 3
+            c_y = (thumb_tip[1] + index_tip[1] + middle_tip[1]) // 3
+            centroid   = (c_x, c_y)
+
             g["hand_visible"] = True
             g["index_pos"]    = index_tip
-            g["pinch_pos"]    = midpoint
+            g["thumb_pos"]    = thumb_tip
+            g["middle_pos"]   = middle_tip
+            g["pinch_pos"]    = centroid
 
-            # ── 1. Pinch click ────────────────────────────────────────────
-            pinch_dist = distance(thumb_tip, index_tip)
-            g["is_pinching"] = pinch_dist < PINCH_THRESHOLD
+            # ── 1. Pinch click (2-finger disabled / commented out per user instruction) ──
+            # pinch_dist = distance(thumb_tip, index_tip)
+            # g["is_pinching"] = pinch_dist < PINCH_THRESHOLD
 
-            # ── 2. Z-push click ───────────────────────────────────────────
+            # ── 2. Z-push click (disabled / commented out per user instruction) ──
             z_val = lm[8].z          # MediaPipe Z: negative = closer to camera
-            click_fired, z_delta, xy_drift = self._detect_z_click(z_val, index_tip)
-            g["click_just_fired"] = click_fired
-            g["z_delta"]          = z_delta
-            g["xy_drift"]         = xy_drift
+            # click_fired, z_delta, xy_drift = self._detect_z_click(z_val, index_tip)
+            click_fired = False
+            g["click_just_fired"] = False
+            g["z_delta"]          = 0.0
+            g["xy_drift"]         = 0.0
+
+            # ── 3-Finger Lock System & 3-Finger Pinch Trigger ──────────────
+            d_ti = math.sqrt((thumb_tip[0] - index_tip[0])**2 + (thumb_tip[1] - index_tip[1])**2)
+            d_tm = math.sqrt((thumb_tip[0] - middle_tip[0])**2 + (thumb_tip[1] - middle_tip[1])**2)
+            d_im = math.sqrt((index_tip[0] - middle_tip[0])**2 + (index_tip[1] - middle_tip[1])**2)
+
+            distinct = (d_ti > 45.0) and (d_tm > 45.0) and (d_im > 45.0)
+
+            dist_t_c = math.sqrt((thumb_tip[0] - c_x)**2 + (thumb_tip[1] - c_y)**2)
+            dist_i_c = math.sqrt((index_tip[0] - c_x)**2 + (index_tip[1] - c_y)**2)
+            dist_m_c = math.sqrt((middle_tip[0] - c_x)**2 + (middle_tip[1] - c_y)**2)
+            max_dist_to_centroid = max(dist_t_c, dist_i_c, dist_m_c)
+
+            mag = magnification if magnification is not None else self.magnification
+            effective_radius = THREE_FINGER_PINCH_RADIUS * max(1.0, mag)
+            is_3_pinching = max_dist_to_centroid < effective_radius
+
+            if distinct:
+                self._lock_progress = min(1.0, self._lock_progress + 0.025)
+            elif not is_3_pinching and not self._three_finger_locked:
+                self._lock_progress = max(0.0, self._lock_progress - 0.04)
+
+            if self._lock_progress >= 1.0:
+                self._three_finger_locked = True
+
+            thumb_locked  = self._lock_progress >= 0.33
+            index_locked  = self._lock_progress >= 0.66
+            middle_locked = self._lock_progress >= 1.0
+
+            if self._three_finger_locked:
+                if is_3_pinching and not self._was_3_pinching:
+                    click_fired = True
+                self._was_3_pinching = is_3_pinching
+                g["is_pinching"] = is_3_pinching
+            else:
+                g["is_pinching"] = False
+
+            g["click_just_fired"]    = click_fired
+            g["lock_progress"]       = self._lock_progress
+            g["three_finger_locked"] = self._three_finger_locked
+            g["locked_fingers"]      = (thumb_locked, index_locked, middle_locked)
+            g["is_3_finger_pinching"]= is_3_pinching
 
             # ── ToF depth lookup at pinch point ───────────────────────────
             tof_act, tof_z, tof_src = self.sample_tof_depth(z_val)
@@ -117,7 +171,6 @@ class HandTracker:
 
             # ── 3. Index isolation ────────────────────────────────────────
             def dist_sq_from_wrist(tip_id, pip_id):
-                # extended if tip is further from wrist (0) than pip
                 d_tip = (lm[tip_id].x - lm[0].x)**2 + (lm[tip_id].y - lm[0].y)**2
                 d_pip = (lm[pip_id].x - lm[0].x)**2 + (lm[pip_id].y - lm[0].y)**2
                 return d_tip > d_pip
@@ -126,20 +179,20 @@ class HandTracker:
             middle_ext = dist_sq_from_wrist(12, 10)
             ring_ext = dist_sq_from_wrist(16, 14)
             pinky_ext = dist_sq_from_wrist(20, 18)
-            
-            # Relaxed index isolation: allow middle finger co-extension (natural tendon attachment)
             g["is_index_isolated"] = index_ext and not (ring_ext or pinky_ext)
 
             self._lost_frames = 0
 
         else:
-            # No hand / lost lock: increment lost frames and reset if grace period expires
             self._lost_frames += 1
             if self._lost_frames > 12:
                 self._z_history.clear()
                 self._z_start_xy  = None
                 self._z_start_val = None
                 self._locked_pos   = None
+                self._lock_progress = 0.0
+                self._three_finger_locked = False
+                self._was_3_pinching = False
 
         self.gesture = g
         return g
@@ -187,17 +240,23 @@ class HandTracker:
     @staticmethod
     def _empty_gesture() -> dict:
         return {
-            "hand_visible":      False,
-            "index_pos":         (0, 0),
-            "pinch_pos":         (0, 0),
-            "is_pinching":       False,
-            "click_just_fired":  False,
-            "is_index_isolated": False,
-            "z_delta":           0.0,
-            "xy_drift":          0.0,
-            "tof_active":        False,
-            "tof_z_m":           0.0,
-            "depth_source":      "RGB MediaPipe Estimate",
+            "hand_visible":        False,
+            "index_pos":           (0, 0),
+            "thumb_pos":           (0, 0),
+            "middle_pos":          (0, 0),
+            "pinch_pos":           (0, 0),
+            "is_pinching":         False,
+            "click_just_fired":    False,
+            "is_index_isolated":   False,
+            "z_delta":             0.0,
+            "xy_drift":            0.0,
+            "tof_active":          False,
+            "tof_z_m":             0.0,
+            "depth_source":        "RGB MediaPipe Estimate",
+            "lock_progress":       0.0,
+            "three_finger_locked": False,
+            "locked_fingers":      (False, False, False),
+            "is_3_finger_pinching":False,
         }
 
     def _detect_z_click(self, z_now: float, xy_now: tuple[int, int]) -> tuple[bool, float, float]:

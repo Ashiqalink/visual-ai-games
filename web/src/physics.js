@@ -8,7 +8,7 @@ export const POWER_FACTOR = 0.025;  // pull-distance → launch force scale for 
 export const MAX_PULL = 150;        // max slingshot pull radius (px)
 
 export const PINCH_THRESHOLD = 30;       // px distance thumb↔index for pinch click
-export const Z_CLICK_THRESHOLD_M = 0.025;  // ~1 inch in MediaPipe Z units (normalised ~= metres)
+export const Z_CLICK_THRESHOLD_M = 0.012;  // ~0.5 inch in MediaPipe Z units (normalised ~= metres)
 export const Z_CLICK_XY_MAX_PX = 30;     // max allowed X/Y drift during a Z-push to count as click
 
 export const DAMAGE_FACTOR = 0.3;

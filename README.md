@@ -158,7 +158,7 @@ npm run dev
 | `MAX_PULL` | 150 px | `physics.py` |
 | `POWER_FACTOR` | 0.18 | `physics.py` |
 | `PINCH_THRESHOLD` | 30 px | `physics.py` |
-| `Z_CLICK_THRESHOLD_M` | 0.025 (~1 inch) | `physics.py` |
+| `Z_CLICK_THRESHOLD_M` | 0.012 (~0.5 inch) | `physics.py` |
 | `Z_CLICK_XY_MAX_PX` | 30 px | `physics.py` |
 | `AIR_DRAG` | 0.998 | `physics.py` |
 | `BIRD_BOUNCE` | 0.35 | `physics.py` |

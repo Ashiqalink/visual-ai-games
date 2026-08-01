@@ -312,9 +312,8 @@ export class GameScene extends Phaser.Scene {
       this.selectedIdx = idx;
     }
 
-    const nearSling = Math.abs(ix - SLING_X) < 150 && Math.abs(iy - SLING_Y) < 150;
     if (isZClicking || (!this.wasPinching && isPinching)) {
-      if (iy <= 200 || nearSling) {
+      if (iy <= 200) {
         this.gameState = 'ARMED';
         this.aimAnchor = { x: (ix || px || SLING_X), y: (iy || py || SLING_Y) };
         const kind = this.birdQueue[this.selectedIdx];
@@ -328,27 +327,43 @@ export class GameScene extends Phaser.Scene {
   _updateArmed(isPinching, px, py) {
     if (!this.bird) return;
 
-    const curX = isPinching ? px : (this.tracker && this.tracker.gesture ? this.tracker.gesture.index_pos[0] : 0);
-    const curY = isPinching ? py : (this.tracker && this.tracker.gesture ? this.tracker.gesture.index_pos[1] : 0);
-
-    if (isPinching || (this.aimAnchor && curX > 0)) {
-      if (!this.aimAnchor) this.aimAnchor = { x: curX, y: curY };
-      let relDx = (curX - this.aimAnchor.x) * 1.8;
-      let relDy = (curY - this.aimAnchor.y) * 1.8;
+    if (isPinching) {
+      if (!this.aimAnchor) {
+        this.aimAnchor = { x: px, y: py };
+      }
+      let relDx = (px - this.aimAnchor.x) * 1.8;
+      let relDy = (py - this.aimAnchor.y) * 1.8;
       const d = Math.hypot(relDx, relDy);
       let dx = relDx, dy = relDy;
       if (d > MAX_PULL) { dx = (dx / d) * MAX_PULL; dy = (dy / d) * MAX_PULL; }
       this.bird.setPosition(SLING_X + dx, SLING_Y + dy);
+      this.isAiming = true;
 
-    } else if (this.wasPinching && !isPinching) {
-      // Fire!
-      this.bird.setStatic(false);
+    } else if (this.wasPinching && !isPinching && this.isAiming) {
+      // Released pinch while aiming -> check pull distance & Fire!
       const pullDx = SLING_X - this.bird.x;
       const pullDy = SLING_Y - this.bird.y;
-      this.bird.applyForce(new Phaser.Math.Vector2(pullDx * POWER_FACTOR, pullDy * POWER_FACTOR));
-      triggerSnapback(this.bird.x, this.bird.y);
-      this.gameState = 'FLIGHT';
-      return;
+      const d = Math.hypot(pullDx, pullDy);
+
+      if (d >= MIN_FIRE_PULL) {
+        this.bird.setStatic(false);
+        this.bird.applyForce(new Phaser.Math.Vector2(pullDx * POWER_FACTOR, pullDy * POWER_FACTOR));
+        triggerSnapback(this.bird.x, this.bird.y);
+        this.gameState = 'FLIGHT';
+        this.isAiming = false;
+        this.aimAnchor = null;
+        return;
+      } else {
+        // Insufficient pull -> return to idle
+        this.bird.setPosition(SLING_X, SLING_Y);
+        this.isAiming = false;
+        this.aimAnchor = null;
+      }
+    } else {
+      // Idle in slingshot
+      this.bird.setPosition(SLING_X, SLING_Y);
+      this.isAiming = false;
+      this.aimAnchor = null;
     }
 
     // Trajectory preview dots
