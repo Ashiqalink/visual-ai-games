@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Play Angry Birds in your browser using real-time hand gestures. Powered by MediaPipe Hands and HTML5 Canvas." />
+    <title>Angry Birds — Vision Edition</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Inter:wght@400;500;700&display=swap" rel="stylesheet" />
+
+    <!-- MediaPipe CDNs -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <!-- Custom styling stylesheet link is automatically handled by Vite, but we reference style.css here too -->
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Main Game Layout -->
+      <main class="game-wrapper">
+        <header class="game-header">
+          <h1 class="logo-text">ANGRY BIRDS <span class="badge">VISION</span></h1>
+          <p class="tagline">Control the slingshot with index finger gestures in real time!</p>
+        </header>
+
+        <div class="viewport-container">
+          <!-- Canvas for game graphics -->
+          <canvas id="gameCanvas" width="1280" height="720"></canvas>
+          
+          <!-- Mirrored webcam stream -->
+          <video id="webcam" autoplay playsinline muted></video>
+
+          <!-- Glassmorphic Loading/Start Overlay -->
+          <div id="startOverlay" class="overlay-card active">
+            <h2>Webcam Activation Required</h2>
+            <p>This game uses your webcam and MediaPipe to detect hand gestures. No video is sent to any server; all tracking happens entirely on your local GPU.</p>
+            <button id="startButton" class="btn btn-primary">Start Webcam Game</button>
+            <div id="loadingIndicator" class="loading-spinner hidden">
+              <div class="spinner"></div>
+              <span>Initializing MediaPipe Model...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sidebar / Bottom bar for extra instructions -->
+        <footer class="game-footer">
+          <div class="control-card">
+            <h3>How to Play</h3>
+            <ul>
+              <li><strong>Aim Slingshot:</strong> Move your index finger in the screen view. Keep your other fingers closed (isolate the index finger).</li>
+              <li><strong>Arm / Load Bird:</strong> Scroll/slide index finger horizontally in SELECTION mode, then Pinch or Z-Push to lock.</li>
+              <li><strong>Launch Bird:</strong> Aim and drag your index finger, then move it close to the window boundaries or release to launch.</li>
+              <li><strong>Restart:</strong> Press <kbd>R</kbd> to restart.</li>
+              <li><strong>Levels:</strong> Press <kbd>1</kbd>, <kbd>2</kbd>, or <kbd>3</kbd> to switch levels.</li>
+            </ul>
+          </div>
+        </footer>
+      </main>
+    </div>
+    
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
