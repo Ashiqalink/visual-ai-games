@@ -22,8 +22,9 @@ import cv2
 import math
 import random
 import numpy as np
-from bird import Bird, BIRD_ORDER, COLOURS
-from block import Block
+from bird import Bird
+from config import BIRD_ORDER, BIRD_COLOURS as COLOURS
+from block import Block, Pig
 from slingshot import SLING_X, SLING_Y, FORK_LEFT, FORK_RIGHT
 from physics import (
     POWER_FACTOR, MAX_PULL, FLOOR_Y, BIRD_LINGER,
@@ -33,16 +34,19 @@ from physics import (
 import slingshot
 import ui
 from config import (
-    PTS_BLOCK, PTS_DEBRIS,
+    PTS_BLOCK, PTS_DEBRIS, PTS_PIG,
     SCORE_POPUP_LIFETIME, SCORE_POPUP_RISE,
     ARMED_GRACE_FRAMES, MIN_FIRE_PULL, EDGE_MARGIN,
     AIM_PULL_GAIN, INPUT_MOVEMENT_MAGNIFICATION, AIM_EMA_HOLD, AIM_EMA_MIN, AIM_EMA_MAX,
     AIM_EMA_JITTER_LO, AIM_EMA_JITTER_HI,
     SEL_DEBOUNCE_FRAMES, Z_PUSH_DETECT_THRESH,
     DEBRIS_LIFESPAN, DEBRIS_VEL_SPREAD, DEBRIS_VY_KICK,
-    DEBRIS_CARRY_FACTOR, DEBRIS_HEALTH,
+    DEBRIS_CARRY_FACTOR, DEBRIS_HEALTH, MAX_DEBRIS,
+
     PLATFORM_W, PLATFORM_H, PLATFORM_HEALTH,
     BIRD_STOP_SPEED,
+    BW, BH, TH, LEVEL_X_OFF, LEVEL_NAMES,
+    CAROUSEL_SPACING, CAROUSEL_SELECTION_MAX_Y
 )
 
 # ── Score constants ────────────────────────────────────────────────────────────────
@@ -79,13 +83,10 @@ class ScorePopup:
 
 
 # ── Level layouts ─────────────────────────────────────────────────────────────
-LEVEL_NAMES = ["Easy", "Medium", "Hard"]
 
 def _level_easy() -> list[Block]:
     """Simple wooden tower — good for learning controls."""
     blocks: list[Block] = []
-    BW, BH = 30, 60
-    TH = 20
 
     # Three pillars
     for gx in [900, 960, 1020]:
@@ -96,6 +97,9 @@ def _level_easy() -> list[Block]:
 
     # Single block on top
     blocks.append(Block(950, FLOOR_Y - BH * 2 - TH, BW, BH, "wood"))
+    
+    # Pig
+    blocks.append(Pig(950, FLOOR_Y - BH * 2 - TH - 30, radius=20))
 
     return blocks
 
@@ -103,8 +107,6 @@ def _level_easy() -> list[Block]:
 def _level_medium() -> list[Block]:
     """Pyramid with mixed wood + ice."""
     blocks: list[Block] = []
-    BW, BH = 30, 60
-    TH = 20
 
     # Ground row — outer wood, inner ice
     blocks.append(Block(820, FLOOR_Y - BH, BW, BH, "wood"))
@@ -124,6 +126,11 @@ def _level_medium() -> list[Block]:
 
     # Top — ice (fragile crown)
     blocks.append(Block(920, FLOOR_Y - BH * 3 - TH * 2, BW, BH, "ice"))
+    
+    # Pigs
+    blocks.append(Pig(860, FLOOR_Y - BH * 2 - TH * 2 - 30, radius=18))
+    blocks.append(Pig(980, FLOOR_Y - BH * 2 - TH * 2 - 30, radius=18))
+    blocks.append(Pig(920, FLOOR_Y - BH * 3 - TH * 2 - 30, radius=18))
 
     return blocks
 
@@ -131,8 +138,6 @@ def _level_medium() -> list[Block]:
 def _level_hard() -> list[Block]:
     """Stone fortress — two towers with a bridge, mixed materials."""
     blocks: list[Block] = []
-    BW, BH = 30, 60
-    TH = 20
 
     # ── Left tower ────────────────────────────────────────────────────────
     # Stone base
@@ -160,6 +165,11 @@ def _level_hard() -> list[Block]:
     # ── Outer buttresses ──────────────────────────────────────────────────
     blocks.append(Block(740, FLOOR_Y - BH, BW, BH, "wood"))
     blocks.append(Block(1100, FLOOR_Y - BH, BW, BH, "wood"))
+    
+    # Pigs
+    blocks.append(Pig(800, FLOOR_Y - BH * 3 - TH - 30, radius=15))
+    blocks.append(Pig(1020, FLOOR_Y - BH * 3 - TH - 30, radius=15))
+    blocks.append(Pig(930, FLOOR_Y - BH * 3 - TH - 30, radius=20))
 
     return blocks
 
@@ -171,21 +181,19 @@ def _build_level(level_idx: int) -> list[Block]:
     idx = max(0, min(level_idx, len(_LEVELS) - 1))
     blocks = _LEVELS[idx]()
     
-    # Move blocks to center (X) and same level as slingshot (Y)
-    # Old blocks were centered around ~960, new center is 640
-    X_OFF = -320
-    # Old base was FLOOR_Y (660), new base is SLING_Y (440)
-    Y_OFF = SLING_Y - FLOOR_Y
-    
-    for b in blocks:
-        b.rect[0] += X_OFF
-        b.rect[1] += Y_OFF
-
-    # Create a static platform for them to rest on (so they don't fall to FLOOR_Y)
+    # Center the platform horizontally under the blocks
+    # (Blocks are roughly centered at X=920 before LEVEL_X_OFF)
     plat_w = PLATFORM_W
     plat_h = PLATFORM_H
-    plat_x = 640 - plat_w / 2
-    plat_y = SLING_Y
+    plat_x = 920 + LEVEL_X_OFF - plat_w / 2
+    plat_y = FLOOR_Y - plat_h
+
+    # Move blocks horizontally, and shift them up so they rest on the platform
+    for b in blocks:
+        b.rect[0] += LEVEL_X_OFF
+        b.rect[1] -= plat_h
+
+    # Create a static platform for them to rest on at the floor level
     platform = Block(plat_x, plat_y, plat_w, plat_h, "wood")
     platform.is_static = True
     platform.health = PLATFORM_HEALTH
@@ -236,16 +244,17 @@ class Game:
         # 3-Finger Pinch Aiming state flags
         self._is_aiming: bool = False
         self._was_unpinched_after_armed: bool = False
+        self._shake_frames: int = 0
+        self._shake_intensity: int = 0
+        self._final_stars: int = 0
+        self._final_bonus: int = 0
+        self.rot_angle_3d: float = 0.0
         # Scoring
         self.score_popups: list[ScorePopup] = []
 
-    def update(self, gesture: dict, key: int) -> np.ndarray | None:
+    def update_game_state(self, gesture: dict, key: int):
         """
-        Called every frame.  Returns None (frame modified in-place by caller).
-
-        gesture keys used
-        -----------------
-        hand_visible, index_pos, pinch_pos, is_pinching, click_just_fired
+        Called once per frame to handle inputs, camera telemetrics, and aiming.
         """
         # Store gesture & ToF depth telemetry
         self._last_gesture = gesture
@@ -271,16 +280,24 @@ class Game:
         elif key in (ord('-'), ord('_')):
             self._AIM_PULL_GAIN = round(max(0.5, self._AIM_PULL_GAIN - 0.5), 1)
 
-        # ── Slingshot animation tick ──────────────────────────────────────
-        slingshot.tick()
-
-        # ── State machine ─────────────────────────────────────────────────
+        # ── State machine (Input-driven) ──────────────────────────────────
         if self.state == "SELECTION":
             self._update_selection(gesture)
         elif self.state == "ARMED":
             self._update_armed(gesture)
-        elif self.state == "FLIGHT":
-            self._update_flight(gesture)
+
+    def update_physics(self):
+        """
+        Called at a fixed timestep to update dynamic bodies, animations, and collisions.
+        """
+        # Increment 3D rotation angle for visual_ai elements
+        self.rot_angle_3d = (self.rot_angle_3d + 2.5) % 360.0
+
+        # ── Slingshot animation tick ──────────────────────────────────────
+        slingshot.tick()
+
+        if self.state == "FLIGHT":
+            self._update_flight(self._last_gesture)
 
         # ── Always update blocks ──────────────────────────────────────────
         new_blocks: list[Block] = []
@@ -289,12 +306,16 @@ class Game:
             b.update()
             if was_active and not b.active:
                 # Block just broke — score + debris
-                is_big = b.rect[2] > 20 and b.rect[3] > 20
-                pts = PTS_BLOCK if is_big else PTS_DEBRIS
+                is_pig = getattr(b, "is_pig", False) or isinstance(b, Pig)
+                if is_pig:
+                    pts = PTS_PIG
+                else:
+                    is_big = b.rect[2] > 20 and b.rect[3] > 20
+                    pts = PTS_BLOCK if is_big else PTS_DEBRIS
                 self.score += pts
                 self.score_popups.append(ScorePopup(b.cx, b.cy, pts))
 
-                if is_big:
+                if not is_pig and is_big:
                     hw = b.rect[2] / 2
                     hh = b.rect[3] / 2
                     for i in range(2):
@@ -312,6 +333,18 @@ class Game:
 
         if new_blocks:
             self.blocks.extend(new_blocks)
+            
+        # ── Enforce Debris Cap ────────────────────────────────────────────
+        debris_blocks = [b for b in self.blocks if getattr(b, "is_debris", False) and b.active]
+        if len(debris_blocks) > MAX_DEBRIS:
+            # Sort by lifespan (lowest lifespan dies first) to preserve newer debris
+            debris_blocks.sort(key=lambda b: b.lifespan)
+            to_remove = len(debris_blocks) - MAX_DEBRIS
+            for b in debris_blocks[:to_remove]:
+                b.active = False
+
+        # ── GC: Remove dead blocks ────────────────────────────────────────
+        self.blocks = [b for b in self.blocks if b.active]
 
         # ── Resolve block-block collisions ────────────────────────────────
         for i in range(len(self.blocks)):
@@ -324,40 +357,91 @@ class Game:
         # ── Update score popups ───────────────────────────────────────────
         self.score_popups = [p for p in self.score_popups if p.update()]
 
+        # ── Check win condition ───────────────────────────────────────────
+        if self.state in ("SELECTION", "ARMED", "FLIGHT"):
+            # If no target pigs remain
+            has_pigs = any(getattr(b, "is_pig", False) for b in self.blocks)
+            if not has_pigs:
+                # Calculate bonus and stars
+                from config import PTS_UNUSED_BIRD, STAR_1_SCORE, STAR_2_SCORE, STAR_3_SCORE
+                self._final_bonus = len(self.bird_queue) * PTS_UNUSED_BIRD
+                if self.current_bird and self.current_bird.active and not self.current_bird.launched:
+                    self._final_bonus += PTS_UNUSED_BIRD
+                self.score += self._final_bonus
+                
+                if self.score >= STAR_3_SCORE:
+                    self._final_stars = 3
+                elif self.score >= STAR_2_SCORE:
+                    self._final_stars = 2
+                elif self.score >= STAR_1_SCORE:
+                    self._final_stars = 1
+                else:
+                    self._final_stars = 0
+                    
+                self.state = "WIN"
+
     def draw(self, frame: np.ndarray):
         """Render everything onto frame (modifies in-place)."""
 
+        # Paint the scene before any world objects.  The desktop entry point
+        # intentionally starts from a plain canvas so camera pixels never leak
+        # into the game; without this pass the slingshot and level geometry
+        # appear to float on a nearly black background.
+        ui.draw_ground(frame, FLOOR_Y)
+
+        shake_x, shake_y = 0, 0
+        if self._shake_frames > 0:
+            shake_x = random.randint(-self._shake_intensity, self._shake_intensity)
+            shake_y = random.randint(-self._shake_intensity, self._shake_intensity)
+            self._shake_frames -= 1
+
         # Blocks
         for b in self.blocks:
+            if shake_x or shake_y:
+                b.rect[0] += shake_x
+                b.rect[1] += shake_y
             b.draw(frame)
+            if shake_x or shake_y:
+                b.rect[0] -= shake_x
+                b.rect[1] -= shake_y
 
         if self.state == "SELECTION":
             slingshot.draw(frame, bird_pos=None)
-            ui.draw_carousel(frame, self.bird_queue, self.selected_idx)
+            ui.draw_carousel(frame, self.bird_queue, self.selected_idx, rot_angle_3d=self.rot_angle_3d)
 
         elif self.state == "ARMED":
             bird = self.current_bird
             pull_d = distance((bird.x, bird.y), (SLING_X, SLING_Y))
-            bp = (bird.x, bird.y)
+            bp = (bird.x + shake_x, bird.y + shake_y)
 
             # Depth-layered: back elastic → bird → front elastic + structure
             slingshot.draw_back(frame, bird_pos=bp, pull_dist=pull_d)
-            bird.draw(frame)
+            if shake_x or shake_y:
+                bird.x += shake_x; bird.y += shake_y
+                bird.draw(frame)
+                bird.x -= shake_x; bird.y -= shake_y
+            else:
+                bird.draw(frame)
             slingshot.draw_front(frame, bird_pos=bp, pull_dist=pull_d)
 
             # Trajectory preview (only drawn while actively aiming with pinch)
             if self._is_aiming and pull_d > 5:
                 vx, vy = self._launch_velocity()
-                ui.draw_trajectory(frame, bird.x, bird.y, vx, vy)
+                ui.draw_trajectory(frame, bird.x, bird.y, vx, vy, mass=bird.mass)
 
         elif self.state == "FLIGHT":
             slingshot.draw(frame, bird_pos=None)
             if self.current_bird and self.current_bird.active:
-                self.current_bird.draw(frame)
+                if shake_x or shake_y:
+                    self.current_bird.x += shake_x; self.current_bird.y += shake_y
+                    self.current_bird.draw(frame)
+                    self.current_bird.x -= shake_x; self.current_bird.y -= shake_y
+                else:
+                    self.current_bird.draw(frame)
 
-        elif self.state == "DONE":
+        elif self.state in ("DONE", "WIN"):
             slingshot.draw(frame, bird_pos=None)
-            ui.draw_done_overlay(frame, score=self.score)
+            ui.draw_done_overlay(frame, score=self.score, won=(self.state == "WIN"), stars=self._final_stars, bonus=self._final_bonus, rot_angle_3d=self.rot_angle_3d)
 
         # Score popups (floating +N text)
         for popup in self.score_popups:
@@ -399,13 +483,13 @@ class Game:
             self.state = "DONE"
             return
 
-        # Carousel area parameters (top-center panel: y <= 220)
-        spacing = 120
+        # Carousel area parameters (top-center panel: y <= CAROUSEL_SELECTION_MAX_Y)
+        spacing = CAROUSEL_SPACING
         panel_w = spacing * total + 80
         panel_x = self.W // 2 - panel_w // 2
 
         # Selecting bird can only be chosen once cursor goes into the carousel area
-        in_selection_area = (iy <= 220)
+        in_selection_area = (iy <= CAROUSEL_SELECTION_MAX_Y)
 
         if in_selection_area:
             rel_x = (ix - panel_x) / panel_w
@@ -432,6 +516,7 @@ class Game:
             if total > 0:
                 kind = self.bird_queue[self.selected_idx]
                 self.current_bird = Bird(kind, SLING_X, SLING_Y)
+                self.current_bird.on_slingshot = True
                 self.current_bird.x = float(SLING_X)
                 self.current_bird.y = float(SLING_Y)
                 # Anchor relative aiming to current hand position
@@ -468,13 +553,18 @@ class Game:
 
         if g.get("click_just_fired", False):
             self._last_click_fired = True
-        else:
-            self._last_click_fired = False
-
         if self._armed_timer > 0:
             self._armed_timer -= 1
 
         is_pinching = g.get("is_pinching", False) or g.get("is_3_finger_pinching", False)
+
+        # Allow player to cancel ARMED state and switch birds anytime by showing an Open Palm ✋
+        # or moving unpinched hand up into the top carousel area!
+        if g.get("is_open_palm", False) or (not is_pinching and g.get("hand_visible", False) and float(g.get("pinch_pos", g["index_pos"])[1]) <= CAROUSEL_SELECTION_MAX_Y):
+            self.current_bird = None
+            self._is_aiming = False
+            self.state = "SELECTION"
+            return
 
         # 1. Require user to unpinch at least once after entering ARMED before aiming can begin
         if not self._was_unpinched_after_armed:
@@ -502,6 +592,17 @@ class Game:
                     bird.x = float(SLING_X)
                     bird.y = float(SLING_Y)
             else:
+                # If unpinched hand moves up into the carousel selection area (top of screen),
+                # allow player to change their mind and switch birds!
+                if g.get("hand_visible", False):
+                    raw_ix, raw_iy = g.get("pinch_pos", g["index_pos"])
+                    if float(raw_iy) <= CAROUSEL_SELECTION_MAX_Y:
+                        # Return current bird back to queue position and go back to SELECTION state
+                        self.current_bird = None
+                        self._is_aiming = False
+                        self.state = "SELECTION"
+                        return
+
                 # Stay idle in slingshot
                 bird.x = float(SLING_X)
                 bird.y = float(SLING_Y)
@@ -606,6 +707,12 @@ class Game:
             factor = max(0.1, 1.0 - block_resist)
             bird.vx *= factor
             bird.vy *= factor
+            
+            # Screen shake on hard impact
+            impact_speed = magnitude(bird.vx, bird.vy)
+            if impact_speed > 3.0:
+                self._shake_frames = 10
+                self._shake_intensity = int(impact_speed)
 
             # If bird is almost stopped after hit, start grounding
             if magnitude(bird.vx, bird.vy) < BIRD_STOP_SPEED and not bird.grounded:
@@ -629,8 +736,10 @@ class Game:
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _launch_velocity(self) -> tuple[float, float]:
-        """Compute launch vx/vy from pull position vs slingshot anchor."""
+        """Compute launch vx/vy from pull position vs slingshot anchor, scaling power factor for larger/heavier birds."""
         bird = self.current_bird
         dx = SLING_X - bird.x
         dy = SLING_Y - bird.y
-        return dx * POWER_FACTOR, dy * POWER_FACTOR
+        # Larger/heavier birds (e.g. Bomb) need extra spring tension power factor
+        size_mass_power = POWER_FACTOR * (bird.mass ** 0.85) * ((bird.radius / 26.0) ** 0.5)
+        return (dx * size_mass_power) / bird.mass, (dy * size_mass_power) / bird.mass

@@ -31,6 +31,10 @@ export class Game {
     this.reset();
   }
 
+  resetLevel() {
+    this.reset();
+  }
+
   reset() {
     this.state = "SELECTION";
     this.birdQueue = [...BIRD_ORDER];
@@ -80,7 +84,11 @@ export class Game {
           const dmg = impactSpeed * 3;
           if (pA.block) {
             const oldH = pA.block.health;
-            pA.block.takeDamage(dmg);
+            if (pA.block.material === 'pig') {
+              pA.block.takeDamage(pA.block.health);
+            } else {
+              pA.block.takeDamage(dmg);
+            }
             if (pA.block.health < oldH) {
               const points = Math.floor(oldH - Math.max(0, pA.block.health)) * 10;
               this.score += points;
@@ -89,7 +97,11 @@ export class Game {
           }
           if (pB.block) {
             const oldH = pB.block.health;
-            pB.block.takeDamage(dmg);
+            if (pB.block.material === 'pig') {
+              pB.block.takeDamage(pB.block.health);
+            } else {
+              pB.block.takeDamage(dmg);
+            }
             if (pB.block.health < oldH) {
               const points = Math.floor(oldH - Math.max(0, pB.block.health)) * 10;
               this.score += points;
@@ -134,6 +146,9 @@ export class Game {
       addBlock(920, FLOOR_Y - BH * 3, BW, BH, "wood");
       addBlock(820, FLOOR_Y - BH - TH, 280, TH, "wood");
       addBlock(860, FLOOR_Y - BH * 2 - TH, 180, TH, "wood");
+      // Target pigs
+      addBlock(910, FLOOR_Y - BH - 40, 40, 40, "pig");
+      addBlock(970, FLOOR_Y - BH - 40, 40, 40, "pig");
 
     } else if (levelIdx === 1) {
       addBlock(840, FLOOR_Y - BH, BW, BH, "wood");
@@ -142,6 +157,9 @@ export class Game {
       addBlock(1020, FLOOR_Y - BH * 2, BW, BH, "ice");
       addBlock(820, FLOOR_Y - BH * 2 - TH, 230, TH, "wood");
       addBlock(920, FLOOR_Y - BH * 2 - TH - BH, BW * 2, BH, "stone");
+      // Target pigs
+      addBlock(925, FLOOR_Y - BH - 40, 40, 40, "pig");
+      addBlock(925, FLOOR_Y - BH * 2 - TH - BH - 40, 40, 40, "pig");
 
     } else if (levelIdx === 2) {
       for (const gx of [800, 900, 1000, 1100]) {
@@ -155,6 +173,10 @@ export class Game {
       addBlock(860, FLOOR_Y - BH * 2 - TH * 2 - BH, BW, BH, "ice");
       addBlock(935, FLOOR_Y - BH * 2 - TH * 2 - BH, BW + 10, BH, "stone");
       addBlock(1000, FLOOR_Y - BH * 2 - TH * 2 - BH, BW, BH, "ice");
+      // Target pigs
+      addBlock(890, FLOOR_Y - BH - 40, 40, 40, "pig");
+      addBlock(990, FLOOR_Y - BH - 40, 40, 40, "pig");
+      addBlock(935, FLOOR_Y - BH * 2 - TH * 2 - BH - 40, 40, 40, "pig");
     }
 
     return blocks;
@@ -339,8 +361,11 @@ export class Game {
     const bird = this.currentBird;
     const dx = SLING_X - bird.body.position.x;
     const dy = SLING_Y - bird.body.position.y;
-    // For Matter.js, forces should be scaled down significantly
-    return [dx * POWER_FACTOR, dy * POWER_FACTOR];
+    const mass = bird.mass || 1.0;
+    const radius = bird.radius || 26;
+    // Scale power factor for larger/heavier birds to prevent immediate grounding
+    const sizeMassPower = POWER_FACTOR * (mass ** 0.85) * ((radius / 26.0) ** 0.5);
+    return [(dx * sizeMassPower) / mass, (dy * sizeMassPower) / mass];
   }
 
   // ── Render Calls ───────────────────────────────────────────────────────────

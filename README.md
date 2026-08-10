@@ -122,6 +122,7 @@ angry-birds-using-opencv/
 ---
 
 ## 🔗 Visual AI SDK Integration
+Warning!! mediapipe currently works only in 3.12 or below so do not upgradee!!
 
 This game depends on the **Visual AI Game Engine SDK** (`visual_ai`) located at `../visual ai game engine/`.
 

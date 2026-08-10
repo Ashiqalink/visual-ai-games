@@ -12,6 +12,7 @@ Improvements:
 import cv2
 import numpy as np
 import math
+from visual_ai import lerp, Vector2
 from config import (
     SLING_X, SLING_Y,
     FORK_SPREAD_X, FORK_RISE_Y, HANDLE_DROP_Y,
@@ -65,31 +66,31 @@ def _snap_pos():
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _elastic_color(pull_dist: float):
-    """Blend elastic colour from red (relaxed) → orange (stretched)."""
+    """Blend elastic colour using visual_ai.lerp."""
     t = min(1.0, pull_dist / 150.0)
-    r = int(ELASTIC_COL_FAR[2] + t * (ELASTIC_COL_NEAR[2] - ELASTIC_COL_FAR[2]))
-    g = int(ELASTIC_COL_FAR[1] + t * (ELASTIC_COL_NEAR[1] - ELASTIC_COL_FAR[1]))
-    b = int(ELASTIC_COL_FAR[0] + t * (ELASTIC_COL_NEAR[0] - ELASTIC_COL_FAR[0]))
+    r = int(lerp(ELASTIC_COL_FAR[2], ELASTIC_COL_NEAR[2], t))
+    g = int(lerp(ELASTIC_COL_FAR[1], ELASTIC_COL_NEAR[1], t))
+    b = int(lerp(ELASTIC_COL_FAR[0], ELASTIC_COL_NEAR[0], t))
     return (b, g, r)
 
 
 def _elastic_thickness(pull_dist: float) -> int:
-    """Thickness grows from 3 → 7 px with pull distance."""
+    """Thickness grows from 3 → 7 px with pull distance using visual_ai.lerp."""
     t = min(1.0, pull_dist / 150.0)
-    return int(3 + t * 4)
+    return int(lerp(3.0, 7.0, t))
 
 
 def _catenary_points(start: tuple, end: tuple, max_sag: float = 18.0,
                      n: int = 10) -> np.ndarray:
-    """Generate a parabolic-sag curve approximating a catenary."""
-    dist = math.sqrt((end[0] - start[0])**2 + (end[1] - start[1])**2)
+    """Generate a parabolic-sag curve approximating a catenary using visual_ai Vector2."""
+    dist = Vector2(start[0], start[1]).distance_to(Vector2(end[0], end[1]))
     # Sag decreases as band is stretched taut
     sag = max_sag * max(0.0, 1.0 - dist / 200.0)
     pts = []
     for i in range(n + 1):
         t = i / n
-        x = start[0] + t * (end[0] - start[0])
-        y = start[1] + t * (end[1] - start[1])
+        x = lerp(start[0], end[0], t)
+        y = lerp(start[1], end[1], t)
         y += sag * 4.0 * t * (1.0 - t)          # parabolic sag
         pts.append([int(x), int(y)])
     return np.array(pts, dtype=np.int32).reshape(-1, 1, 2)
@@ -105,20 +106,25 @@ def _draw_elastic(frame: np.ndarray, start: tuple, end: tuple,
 
 
 def _draw_structure(frame: np.ndarray):
-    """Draw the wooden handle and fork arms (always on top)."""
+    """Draw the wooden handle and fork arms with PBR wood specular highlights."""
     # Handle (thick vertical)
     cv2.line(frame, (SLING_X, SLING_Y), HANDLE_BOT, WOOD_COL, 14)
-    cv2.line(frame, (SLING_X, SLING_Y), HANDLE_BOT, WOOD_DARK, 4)
+    cv2.line(frame, (SLING_X - 3, SLING_Y), (HANDLE_BOT[0] - 3, HANDLE_BOT[1]), (220, 160, 90), 2)
+    cv2.line(frame, (SLING_X, SLING_Y), HANDLE_BOT, WOOD_DARK, 3)
 
     # Fork arms
     cv2.line(frame, (SLING_X, SLING_Y), FORK_LEFT,  WOOD_COL, 12)
     cv2.line(frame, (SLING_X, SLING_Y), FORK_RIGHT, WOOD_COL, 12)
+    cv2.line(frame, (SLING_X - 2, SLING_Y), (FORK_LEFT[0] - 2, FORK_LEFT[1]), (220, 160, 90), 2)
+    cv2.line(frame, (SLING_X + 2, SLING_Y), (FORK_RIGHT[0] + 2, FORK_RIGHT[1]), (220, 160, 90), 2)
     # inner dark stripe for depth
     cv2.line(frame, (SLING_X, SLING_Y), FORK_LEFT,  WOOD_DARK, 3)
     cv2.line(frame, (SLING_X, SLING_Y), FORK_RIGHT, WOOD_DARK, 3)
     # Fork tips (small circles)
     cv2.circle(frame, FORK_LEFT,  8, WOOD_COL, -1)
+    cv2.circle(frame, FORK_LEFT,  3, (240, 180, 110), -1)
     cv2.circle(frame, FORK_RIGHT, 8, WOOD_COL, -1)
+    cv2.circle(frame, FORK_RIGHT, 3, (240, 180, 110), -1)
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

@@ -190,8 +190,12 @@ document.addEventListener("DOMContentLoaded", () => {
       hintDisplay.textContent = hints[game.state] || "Pinch or move index finger to play!";
     }
 
-    // Check Victory condition
-    if (game.state === "DONE" && game.blocks.length === 0) {
+    // Check Victory condition: pigs eliminated or all blocks destroyed
+    const pigsRemaining = game.blocks.filter(b => b.active && b.material === "pig").length;
+    const activeBlocks = game.blocks.filter(b => b.active).length;
+    const isVictorious = (game.blocks.length > 0 && pigsRemaining === 0) || activeBlocks === 0;
+
+    if ((game.state === "DONE" || pigsRemaining === 0) && isVictorious) {
       if (victoryOverlay && victoryOverlay.classList.contains("hidden")) {
         victoryOverlay.classList.remove("hidden");
         if (victoryScore) victoryScore.textContent = game.score;

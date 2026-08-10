@@ -29,25 +29,66 @@ import time
 import cv2
 import numpy as np
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine'))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+sys.path.insert(0, os.path.join(BASE_DIR, '..', 'visual ai game engine', 'src'))
 
-from visual_ai import VisionPipeline, GameEngine, CPP_ENGINE_AVAILABLE
+import psutil
+try:
+    import GPUtil
+    GPUTIL_AVAILABLE = True
+except ImportError:
+    GPUTIL_AVAILABLE = False
+
+from visual_ai import VisionPipeline, CPP_ENGINE_AVAILABLE
 from game import Game
 from config import (
     FRAME_W, FRAME_H, BG_COLOR,
     CAM_W, CAM_H, CAM_MARGIN, CAM_BORDER, CAM_BORDER_COLOR,
     SMOOTH_ALPHA,
+    CURSOR_INDEX_COL, CURSOR_PINCH_COL, CURSOR_FIRE_COL,
 )
 
 # (Window / canvas constants now imported from config.py)
 
+
+_last_metrics_time = 0.0
+_cached_cpu = 0.0
+_cached_gpu_str = "N/A"
+
+def _draw_system_metrics(canvas: np.ndarray):
+    """Draw live CPU and GPU usage metrics on HUD (smoothed & throttled updates)."""
+    global _last_metrics_time, _cached_cpu, _cached_gpu_str
+    now = time.time()
+    
+    # Update reading every 500ms so numbers don't flicker uncontrollably
+    if now - _last_metrics_time > 0.5:
+        _last_metrics_time = now
+        raw_cpu = psutil.cpu_percent(interval=None)
+        # Exponential Moving Average smoothing
+        _cached_cpu = 0.7 * _cached_cpu + 0.3 * raw_cpu if _cached_cpu > 0 else raw_cpu
+        
+        if GPUTIL_AVAILABLE:
+            try:
+                gpus = GPUtil.getGPUs()
+                if gpus:
+                    gpu_val = gpus[0].load * 100
+                    _cached_gpu_str = f"{gpu_val:.1f}%"
+            except Exception:
+                _cached_gpu_str = "N/A"
+            
+    text = f"CPU: {_cached_cpu:.1f}% | GPU: {_cached_gpu_str}"
+    cv2.rectangle(canvas, (10, 10), (310, 42), (0, 0, 0), -1)
+    cv2.rectangle(canvas, (10, 10), (310, 42), (50, 200, 255), 1)
+    cv2.putText(canvas, text, (20, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2, cv2.LINE_AA)
 
 def _paste_cam(canvas: np.ndarray, cam_frame: np.ndarray):
     """Paste a resized, mirrored camera preview into the top-right corner."""
     if cam_frame is None:
         return
     preview = cv2.resize(cam_frame, (CAM_W, CAM_H))
-    preview = cv2.flip(preview, 1)          # mirror so it feels natural
+    # Frame from VisionPipeline is already mirrored, no second flip needed
 
     x0 = FRAME_W - CAM_W - CAM_MARGIN
     y0 = CAM_MARGIN
@@ -83,15 +124,16 @@ def main():
     )
     pipeline.start()
 
-    _engine = GameEngine(float(FRAME_W), float(FRAME_H))
     game    = Game(frame_w=FRAME_W, frame_h=FRAME_H)
 
     cv2.namedWindow("Angry Birds — Vision", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("Angry Birds — Vision", FRAME_W, FRAME_H)
 
-    # ── FPS tracking ──────────────────────────────────────────────────────
+    # ── FPS & Timing setup ────────────────────────────────────────────────
     prev_time = time.time()
     fps = 0
+    accumulator = 0.0
+    FIXED_DT = 1 / 60.0
 
     cam_frame = None          # raw BGR from pipeline (for the preview box only)
     gesture = {
@@ -133,29 +175,43 @@ def main():
             time.sleep(0.005)
             continue
 
-        # ── FPS calculation ───────────────────────────────────────────────
+        # ── FPS calculation & Timing ──────────────────────────────────────
         now = time.time()
         dt  = max(now - prev_time, 1e-6)
+        # Cap frame time to prevent spiral of death if running slow
+        frame_time = min(dt, 0.25)
         prev_time = now
         fps = int(1.0 / dt)
         game.fps = fps
+        accumulator += frame_time
 
         # ── Keyboard ──────────────────────────────────────────────────────
         key = cv2.waitKey(1) & 0xFF
         if key in (ord('t'), ord('T')):
             pipeline.tof_simulated = not getattr(pipeline, "tof_simulated", False)
             print(f"[ToF Debugger] Simulated ToF Depth Stream: {pipeline.tof_simulated}")
+        if key in (ord('c'), ord('C')):
+            pipeline.disable_camera = not getattr(pipeline, "disable_camera", False)
+            print(f"[Camera Debugger] Camera Disabled: {pipeline.disable_camera}")
 
-        # ── Game logic ────────────────────────────────────────────────────
-        game.update(gesture, key)
+        # ── Game logic (Input & State) ────────────────────────────────────
+        game.update_game_state(gesture, key)
         if hasattr(pipeline, "set_movement_magnification"):
             pipeline.set_movement_magnification(game._AIM_PULL_GAIN)
+
+        # ── Fixed-Step Physics ────────────────────────────────────────────
+        while accumulator >= FIXED_DT:
+            game.update_physics()
+            accumulator -= FIXED_DT
 
         # ── Build solid game canvas (no camera bleed-through) ─────────────
         canvas[:] = BG_COLOR            # deep navy-black background
 
         # ── Draw game elements onto canvas ────────────────────────────────
         game.draw(canvas)
+
+        # ── Draw live performance HUD (CPU/GPU) ─────────────────────────
+        _draw_system_metrics(canvas)
 
         # ── Hand cursor overlay ───────────────────────────────────────────
         if gesture["hand_visible"]:
@@ -166,21 +222,21 @@ def main():
             diy = iy
 
             # Index fingertip ring
-            cv2.circle(canvas, (dix, diy), 14, (0, 255, 200), 2)
-            cv2.circle(canvas, (dix, diy),  5, (0, 255, 200), -1)
+            cv2.circle(canvas, (dix, diy), 14, CURSOR_INDEX_COL, 2)
+            cv2.circle(canvas, (dix, diy),  5, CURSOR_INDEX_COL, -1)
 
             # Pinch midpoint
             if gesture["is_pinching"]:
                 px, py = gesture["pinch_pos"]
                 dpx = px
-                cv2.circle(canvas, (dpx, py), 10, (0, 200, 255), -1)
-                cv2.circle(canvas, (dpx, py), 14, (0, 200, 255),  2)
+                cv2.circle(canvas, (dpx, py), 10, CURSOR_PINCH_COL, -1)
+                cv2.circle(canvas, (dpx, py), 14, CURSOR_PINCH_COL,  2)
 
             # Z-click flash
             if gesture["click_just_fired"]:
-                cv2.circle(canvas, (dix, diy), 30, (0, 80, 255), 3)
+                cv2.circle(canvas, (dix, diy), 30, CURSOR_FIRE_COL, 3)
                 cv2.putText(canvas, "FIRE!", (dix + 18, diy - 18),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 80, 255), 2, cv2.LINE_AA)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, CURSOR_FIRE_COL, 2, cv2.LINE_AA)
 
         # ── Camera preview — top-right corner ─────────────────────────────
         _paste_cam(canvas, cam_frame)
