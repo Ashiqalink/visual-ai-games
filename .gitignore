@@ -18,3 +18,6 @@ Thumbs.db
 # IDEs
 .vscode/
 .idea/
+
+# Build/install logs
+*.log
