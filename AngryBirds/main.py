@@ -138,6 +138,9 @@ def main():
     accumulator = 0.0
     FIXED_DT = 1 / 60.0
 
+    # ToF stabilizer starts off; L toggles it, X cancels an in-progress run.
+    tof_stab_on = False
+
     cam_frame = None          # raw BGR from pipeline (for the preview box only)
     gesture = {
         "hand_visible":        False,
@@ -150,10 +153,11 @@ def main():
         "is_index_isolated":   False,
         "z_delta":             0.0,
         "xy_drift":            0.0,
-        "lock_progress":       0.0,
-        "three_finger_locked": False,
-        "locked_fingers":      (False, False, False),
-        "is_3_finger_pinching":False,
+        "hand_sign":           "unknown",
+        "fingers_extended":    (False, False, False, False, False),
+        "is_fist":             False,
+        "is_open_palm":        False,
+        "smoothing_enabled":   True,
     }
 
     canvas = np.zeros((FRAME_H, FRAME_W, 3), dtype=np.uint8)
@@ -196,6 +200,26 @@ def main():
         if key in (ord('c'), ord('C')):
             pipeline.disable_camera = not getattr(pipeline, "disable_camera", False)
             print(f"[Camera Debugger] Camera Disabled: {pipeline.disable_camera}")
+
+        # Two independent stabilisation systems, two keys.
+        # K — One-Euro landmark smoothing (X/Y jitter vs responsiveness)
+        # L — ToF depth stabilizer (lid-shake calibration)
+        if key in (ord('k'), ord('K')):
+            on = pipeline.toggle_smoothing()
+            print(f"[Stabilisation] Landmark smoothing: {'ON' if on else 'OFF (raw positions)'}")
+        if key in (ord('l'), ord('L')):
+            tof_stab_on = not tof_stab_on
+            if tof_stab_on:
+                pipeline.begin_stabilization(3.0)
+                print("[Stabilisation] ToF stabilizer: calibrating — hold still")
+            else:
+                pipeline.disable_stabilization()
+                print("[Stabilisation] ToF stabilizer: OFF")
+        # The calibration overlay tells the player "Press X to cancel", but
+        # nothing was listening for it, so the overlay could not be dismissed.
+        if key in (ord('x'), ord('X')):
+            pipeline.cancel_stabilization()
+            tof_stab_on = False
 
         # ── Game logic (Input & State) ────────────────────────────────────
         game.update_game_state(gesture, key)

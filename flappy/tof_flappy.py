@@ -19,6 +19,17 @@ from visual_ai import VisionPipeline
 
 W, H = 800, 600
 
+# Fingertip control band. Only the middle stretch of the camera frame is mapped
+# to the full screen height: the very top and bottom of frame are awkward to
+# reach and are where MediaPipe tracking degrades, so excluding them means the
+# whole playable range sits inside comfortable, reliable finger travel.
+FINGER_TOP    = 0.15 * H
+FINGER_BOTTOM = 0.85 * H
+
+# How hard the bird chases the fingertip, per frame. Higher = more responsive
+# and twitchier; lower = floatier.
+BIRD_FOLLOW = 0.35
+
 def draw_text(img, text, x, y, size=1.0, color=(255, 255, 255), thickness=2):
     cv2.putText(img, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, size, (0, 0, 0), thickness + 2)
     cv2.putText(img, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, size, color, thickness)
@@ -82,10 +93,10 @@ def main():
     score = 0
     game_over = False
     
-    # For smoothing Z
-    smooth_z = 0.45
+    target_y = float(H // 2)
     cam_frame = None
     hand_visible = False
+    tof_stab_on = False
 
     while True:
         try:
@@ -96,22 +107,25 @@ def main():
         if latest is not None:
             cam_frame = latest.get("frame")
             hand_visible = latest.get("hand_visible", False)
-            # Only update depth if the hand is actually visible!
             if hand_visible:
-                tof_z = latest.get("tof_z_m", 0.45)
-                # Simple EMA smoothing for the raw depth
-                smooth_z = 0.6 * smooth_z + 0.4 * tof_z
+                # Height follows the index fingertip directly.
+                #
+                # This used to map ToF depth to height, but with no real sensor
+                # the depth came from the simulated branch (0.45 + lm_z * 0.6).
+                # MediaPipe's relative Z spans roughly +/-0.1, so it drove only
+                # a sliver of the [0.2, 0.5] range it was mapped through --
+                # cramped at one end and saturating at the other. Fingertip Y is
+                # absolute, uses the full screen, and is far easier to hold
+                # steady with one finger.
+                finger_y = float(latest.get("index_pos", (0, H // 2))[1])
+                target_y = np.interp(finger_y, [FINGER_TOP, FINGER_BOTTOM], [0, H])
             else:
-                # If hand is lost, let the bird drop towards the bottom faster
-                smooth_z = 0.8 * smooth_z + 0.2 * 0.5
+                # Hand lost: let the bird sink toward the middle rather than
+                # snapping, so a brief tracking dropout is survivable.
+                target_y = target_y * 0.9 + (H / 2.0) * 0.1
 
-        # Map ToF Z depth (approx 0.2m to 0.5m) to screen height
-        # Close to sensor (0.2m) -> Bird high (Y=0)
-        # Far from sensor (0.5m) -> Bird low (Y=H)
-        target_y = np.interp(smooth_z, [0.2, 0.5], [0, H])
-        
         # Smooth bird movement towards target
-        bird_y = bird_y * 0.7 + target_y * 0.3
+        bird_y = bird_y * (1.0 - BIRD_FOLLOW) + target_y * BIRD_FOLLOW
 
         frame = np.zeros((H, W, 3), dtype=np.uint8)
         frame[:] = (40, 30, 20) # Dark background
@@ -147,8 +161,11 @@ def main():
 
         # Draw UI
         draw_text(frame, f"Score: {score}", 20, 40, 1.0)
-        draw_text(frame, f"ToF Z: {smooth_z:.3f}m", 20, 80, 0.7, (0, 255, 0))
-        draw_text(frame, "Control bird height with depth!", 20, H - 20, 0.6, (150, 150, 150))
+        smoothing_on = latest.get("smoothing_enabled", True) if latest else True
+        draw_text(frame, f"Smoothing: {'ON' if smoothing_on else 'OFF'}", 20, 80, 0.7,
+                  (0, 255, 0) if smoothing_on else (0, 180, 255))
+        draw_text(frame, "Raise/lower your index finger to fly  |  K: smoothing  L: ToF stab",
+                  20, H - 20, 0.6, (150, 150, 150))
 
         if game_over:
             draw_text(frame, "GAME OVER", W//2 - 150, H//2, 2.0, (0, 0, 255), 3)
@@ -161,6 +178,20 @@ def main():
         key = cv2.waitKey(16) & 0xFF
         if key in (27, ord('q')):
             break
+        elif key in (ord('k'), ord('K')):
+            on = pipeline.toggle_smoothing()
+            print(f"[Stabilisation] Landmark smoothing: {'ON' if on else 'OFF (raw positions)'}")
+        elif key in (ord('l'), ord('L')):
+            tof_stab_on = not tof_stab_on
+            if tof_stab_on:
+                pipeline.begin_stabilization(3.0)
+                print("[Stabilisation] ToF stabilizer: calibrating — hold still")
+            else:
+                pipeline.disable_stabilization()
+                print("[Stabilisation] ToF stabilizer: OFF")
+        elif key in (ord('x'), ord('X')):
+            pipeline.cancel_stabilization()
+            tof_stab_on = False
         elif key == ord('r') and game_over:
             score = 0
             pipes = [Pipe(W + 200), Pipe(W + 600)]

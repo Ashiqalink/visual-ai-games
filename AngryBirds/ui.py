@@ -154,69 +154,58 @@ def draw_trajectory(frame: np.ndarray,
         cv2.circle(frame, (int(x), int(y)), r_dot, col, -1)
 
 
-def draw_3finger_lock_overlay(frame: np.ndarray, gesture: dict):
+# Sign -> (label, BGR colour). Kept here so the overlay and the HUD panel
+# below cannot drift apart on naming or colour.
+SIGN_STYLE = {
+    "fist":      ("GRAB",    (0, 140, 255)),
+    "open_palm": ("RELEASE", (0, 255, 120)),
+    "point":     ("POINT",   (255, 220, 0)),
+    "peace":     ("PEACE",   (255, 0, 255)),
+    "unknown":   ("...",     (150, 150, 160)),
+}
+
+
+def draw_hand_sign_overlay(frame: np.ndarray, gesture: dict):
     """
-    Renders step-by-step lock-in animations for Thumb, Index, and Middle fingers,
-    connected triangle mesh when locked, and centroid pinch trigger ripple.
+    Draws the recognised hand sign as a badge on the hand, plus a fingertip
+    marker per tracked finger. Replaces the old 3-finger lock animation, which
+    visualised a timed lock phase that the fist/open scheme no longer has.
     """
     if not gesture or not gesture.get("hand_visible", False):
         return
 
-    thumb_pos = gesture.get("thumb_pos", (0, 0))
-    index_pos = gesture.get("index_pos", (0, 0))
-    middle_pos = gesture.get("middle_pos", (0, 0))
-    pinch_pos = gesture.get("pinch_pos", (0, 0))
-    progress = gesture.get("lock_progress", 0.0)
-    is_locked = gesture.get("three_finger_locked", False)
-    locked_fingers = gesture.get("locked_fingers", (False, False, False))
-    is_pinching = gesture.get("is_3_finger_pinching", False)
-    click_fired = gesture.get("click_just_fired", False)
+    sign = gesture.get("hand_sign", "unknown")
+    label, col = SIGN_STYLE.get(sign, SIGN_STYLE["unknown"])
 
-    # Finger definitions: (name, position, color, progress_range_start, progress_range_end, is_locked)
-    fingers = [
-        ("THUMB", thumb_pos, (0, 215, 255), 0.0, 0.33, locked_fingers[0]),
-        ("INDEX", index_pos, (255, 255, 0), 0.33, 0.66, locked_fingers[1]),
-        ("MIDDLE", middle_pos, (255, 0, 255), 0.66, 1.0, locked_fingers[2]),
-    ]
+    anchor = gesture.get("pinch_pos", (0, 0))
+    ax, ay = int(anchor[0]), int(anchor[1])
 
-    for name, pos, col, start_p, end_p, is_f_locked in fingers:
-        x, y = pos
+    # Fingertip markers — small and unobtrusive; the badge carries the meaning.
+    for pos in (gesture.get("thumb_pos"), gesture.get("index_pos"), gesture.get("middle_pos")):
+        if not pos:
+            continue
+        x, y = int(pos[0]), int(pos[1])
         if x <= 0 or y <= 0:
             continue
+        cv2.circle(frame, (x, y), 5, col, -1)
+        cv2.circle(frame, (x, y), 8, (30, 30, 40), 1)
 
-        # Outer base ring
-        cv2.circle(frame, (x, y), 22, (50, 50, 50), 2)
+    if ax <= 0 or ay <= 0:
+        return
 
-        if is_f_locked:
-            # Fully locked: glowing solid badge
-            cv2.circle(frame, (x, y), 22, col, -1)
-            cv2.circle(frame, (x, y), 25, (255, 255, 255), 2)
-            _text(frame, "LOCKED", (x - 22, y - 28), scale=0.45, col=col, thickness=2)
-        else:
-            # Partial locking animation arc
-            f_ratio = max(0.0, min(1.0, (progress - start_p) / (end_p - start_p)))
-            angle = int(f_ratio * 360)
-            if angle > 0:
-                cv2.ellipse(frame, (x, y), (22, 22), 0, -90, -90 + angle, col, 4)
-            cv2.circle(frame, (x, y), 6, col, -1)
-            if f_ratio > 0:
-                _text(frame, f"{name} LOCKING...", (x - 35, y - 28), scale=0.42, col=(200, 240, 255), thickness=1)
+    # Sign badge: solid while gripping, hollow ring once released, so the
+    # grab/fire transition is readable at a glance mid-shot.
+    if sign == "fist":
+        cv2.circle(frame, (ax, ay), 26, col, -1)
+        cv2.circle(frame, (ax, ay), 30, (255, 255, 255), 2)
+    elif sign == "open_palm":
+        cv2.circle(frame, (ax, ay), 34, col, 3)
+        cv2.circle(frame, (ax, ay), 44, col, 1)
+    else:
+        cv2.circle(frame, (ax, ay), 20, col, 2)
 
-    # Connected triangle mesh & lock field when 3 fingers are locked
-    if is_locked and thumb_pos != (0, 0) and index_pos != (0, 0) and middle_pos != (0, 0):
-        pts = np.array([thumb_pos, index_pos, middle_pos], np.int32).reshape((-1, 1, 2))
-        cv2.polylines(frame, [pts], True, (0, 255, 255), 2, cv2.LINE_AA)
-
-        # Draw centroid locking core
-        cx, cy = pinch_pos
-        cv2.circle(frame, (cx, cy), 14, (0, 255, 255), 2)
-        cv2.circle(frame, (cx, cy), 6, (0, 255, 120), -1)
-
-    # Pinch / Fire ripple animation at centroid
-    if is_pinching or click_fired:
-        cx, cy = pinch_pos
-        cv2.circle(frame, (cx, cy), 40, (0, 80, 255), 4)
-        _text(frame, "3-PINCH TRIGGER!", (cx - 65, cy - 45), scale=0.6, col=(0, 255, 255), thickness=2)
+    (tw, _), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+    _text(frame, label, (ax - tw // 2, ay - 42), scale=0.6, col=col, thickness=2)
 
 
 def draw_hud(
@@ -239,9 +228,9 @@ def draw_hud(
     """Render full head-up display overlay (modifies frame in-place)."""
     h, w = frame.shape[:2]
 
-    # Draw 3-finger lock animation directly on canvas if gesture is provided
+    # Draw hand-sign badge directly on canvas if gesture is provided
     if gesture:
-        draw_3finger_lock_overlay(frame, gesture)
+        draw_hand_sign_overlay(frame, gesture)
 
     # Top-left info box
     _text(frame, f"SCORE: {score}", (20, 40), scale=0.9, col=(0, 255, 200), thickness=2)
@@ -255,7 +244,7 @@ def draw_hud(
         tmp = Bird(kind, 100 + i * 55, h - 30)
         tmp.draw(frame, scale=0.7)
 
-    # ── 3-Finger Lock & Gesture Debug Panel — top-right (below camera box)
+    # ── Hand Sign & Gesture Debug Panel — top-right (below camera box)
     box_w, box_h = 250, 145
     box_x, box_y = w - box_w - 12, 187   # top-right, directly below camera preview
 
@@ -263,68 +252,63 @@ def draw_hud(
     cv2.rectangle(frame, (box_x, box_y), (box_x + box_w, box_y + box_h), (60, 90, 130), 1)
 
     # Title
-    _text(frame, "3-FINGER LOCK SYSTEM", (box_x + 8, box_y + 18), scale=0.48, col=(0, 220, 255), thickness=2)
+    _text(frame, "HAND SIGN CONTROL", (box_x + 8, box_y + 18), scale=0.48, col=(0, 220, 255), thickness=2)
 
-    # Lock progress parameters from gesture dict
-    progress = gesture.get("lock_progress", 0.0) if gesture else 0.0
-    is_locked = gesture.get("three_finger_locked", False) if gesture else False
-    locked_fingers = gesture.get("locked_fingers", (False, False, False)) if gesture else (False, False, False)
+    sign = gesture.get("hand_sign", "unknown") if gesture else "unknown"
+    fingers_ext = gesture.get("fingers_extended", (False,) * 5) if gesture else (False,) * 5
+    smoothing_on = gesture.get("smoothing_enabled", True) if gesture else True
+    sign_label, sign_col = SIGN_STYLE.get(sign, SIGN_STYLE["unknown"])
 
-    # Progress bar
-    bar_x, bar_y = box_x + 8, box_y + 30
-    bar_w, bar_h = 234, 14
-    cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (35, 35, 45), -1)
-    bar_col = (0, 255, 120) if is_locked else (0, 200, 255)
-    cv2.rectangle(frame, (bar_x, bar_y), (bar_x + int(bar_w * progress), bar_y + bar_h), bar_col, -1)
-    cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (100, 120, 150), 1)
+    # Current sign
+    _text(frame, f"Sign: {sign_label}", (box_x + 8, box_y + 44), scale=0.55, col=sign_col, thickness=2)
 
-    # Finger lock badges status
-    t_icon = "THUMB 🔒" if locked_fingers[0] else "THUMB ⏳"
-    i_icon = "INDEX 🔒" if locked_fingers[1] else "INDEX ⏳"
-    m_icon = "MID 🔒" if locked_fingers[2] else "MID ⏳"
+    # Per-finger extension pips — the raw signal behind the classification, so a
+    # misread sign can be traced to the finger responsible.
+    pip_names = ("T", "I", "M", "R", "P")
+    for i, (nm, ext) in enumerate(zip(pip_names, fingers_ext)):
+        px = box_x + 12 + i * 30
+        py = box_y + 66
+        col_p = (0, 255, 120) if ext else (70, 70, 85)
+        cv2.circle(frame, (px, py), 9, col_p, -1 if ext else 2)
+        _text(frame, nm, (px - 4, py + 24), scale=0.38, col=(170, 170, 180), thickness=1)
 
-    t_col = (0, 255, 120) if locked_fingers[0] else (160, 160, 160)
-    i_col = (0, 255, 120) if locked_fingers[1] else (160, 160, 160)
-    m_col = (0, 255, 120) if locked_fingers[2] else (160, 160, 160)
-
-    _text(frame, t_icon, (box_x + 8, box_y + 65), scale=0.40, col=t_col, thickness=1)
-    _text(frame, i_icon, (box_x + 88, box_y + 65), scale=0.40, col=i_col, thickness=1)
-    _text(frame, m_icon, (box_x + 168, box_y + 65), scale=0.40, col=m_col, thickness=1)
-
-    # Overall Status indicator
+    # Status line
     if click_fired:
-        st_txt, st_col = "ACTION FIRED! 💥", (0, 80, 255)
-    elif is_locked:
-        st_txt, st_col = "LOCKED! PINCH 3 TO FIRE", (0, 255, 120)
-    elif progress > 0.0:
-        st_txt, st_col = f"LOCKING ({int(progress*100)}%)...", (0, 200, 255)
+        st_txt, st_col = "FIRED!", (0, 80, 255)
+    elif sign == "fist":
+        st_txt, st_col = "HOLDING - open to fire", (0, 140, 255)
+    elif sign == "open_palm":
+        st_txt, st_col = "HAND OPEN - ready", (0, 255, 120)
     else:
-        st_txt, st_col = "KEEP 3 FINGERS APART", (140, 140, 150)
+        st_txt, st_col = "Make a fist to grab", (140, 140, 150)
 
-    _text(frame, f"Status: {st_txt}", (box_x + 8, box_y + 90), scale=0.44, col=st_col, thickness=2)
-    
-    # Motion Jitter Statistics Debug metrics
+    _text(frame, st_txt, (box_x + 8, box_y + 108), scale=0.44, col=st_col, thickness=2)
+
+    # Jitter + smoothing state
     jitter = gesture.get("jitter", {}) if gesture else {}
     raw_std = jitter.get("raw_jitter_std", 0.0)
     smooth_std = jitter.get("smoothed_jitter_std", 0.0)
     red_pct = jitter.get("jitter_reduction_pct", 0.0)
-    
+
     j_text = f"Jitter: {smooth_std:.1f}px (Raw: {raw_std:.1f}px | -{red_pct:.0f}%)"
-    _text(frame, j_text, (box_x + 8, box_y + 115), scale=0.38, col=(0, 240, 200), thickness=1)
-    _text(frame, "Z-Push & 2-Pinch: Disabled", (box_x + 8, box_y + 134), scale=0.34, col=(120, 140, 160))
+    _text(frame, j_text, (box_x + 8, box_y + 126), scale=0.38, col=(0, 240, 200), thickness=1)
+
+    sm_txt = "Smoothing: ON" if smoothing_on else "Smoothing: OFF (raw)"
+    sm_col = (120, 140, 160) if smoothing_on else (0, 180, 255)
+    _text(frame, sm_txt, (box_x + 8, box_y + 141), scale=0.34, col=sm_col)
 
     # ── Key hints — bottom-right ──────────────────────────────────────────
     hints = {
-        "SELECTION": "Lock 3 fingers apart -> Pinch 3 to select bird",
-        "ARMED":     "Pinch 3 to aim & pull | Release to fire | Open Palm ✋ or move UP to switch bird",
+        "SELECTION": "Make a FIST over a bird to grab it",
+        "ARMED":     "Move fist to pull | OPEN HAND to fire | Open hand + move UP to switch bird",
         "FLIGHT":    "Bird in flight...",
     }
     hint = hints.get(state, "")
-    _text(frame, hint, (w - 420, h - 20), scale=0.55, col=(200, 200, 200))
+    _text(frame, hint, (w - 460, h - 20), scale=0.55, col=(200, 200, 200))
 
     # Level-switch hint
-    _text(frame, "1/2/3: Switch Level  |  +/-: Magnification  |  R: Restart",
-          (w - 480, h - 44), scale=0.45, col=(160, 160, 160))
+    _text(frame, "1/2/3: Level  |  +/-: Magnification  |  R: Restart  |  K: Smoothing  |  L: ToF Stab",
+          (w - 620, h - 44), scale=0.45, col=(160, 160, 160))
 
 
 def draw_done_overlay(frame: np.ndarray, score: int = 0, won: bool = False, stars: int = 0, bonus: int = 0, rot_angle_3d: float = 0.0):

@@ -506,12 +506,11 @@ class Game:
             if self._sel_stable_frames >= self._SEL_DEBOUNCE:
                 self.selected_idx = self._sel_candidate
 
-        # Detect 1st pinch trigger: 3-finger pinch selection (ONLY allowed inside selection area)
-        is_pinching = g.get("is_pinching", False) or g.get("is_3_finger_pinching", False)
-        click_trigger = (g.get("click_just_fired", False) or is_pinching) and in_selection_area
+        # Grab trigger: a closed fist inside the selection area picks the bird up.
+        click_trigger = g.get("is_fist", False) and in_selection_area
 
         if click_trigger:
-            self._last_click_mode = "3-FINGER PINCH"
+            self._last_click_mode = "FIST GRAB"
             self._last_click_fired = True
             if total > 0:
                 kind = self.bird_queue[self.selected_idx]
@@ -530,20 +529,25 @@ class Game:
                 self._smoothed_iy  = float(anc_y)
                 self._armed_inside = False         # reset edge-fire guard
                 self._armed_timer = 0              # immediate readiness
-                self._is_aiming = False            # bird stays idle until 2nd pinch
-                self._was_unpinched_after_armed = False # require release before 2nd pinch
+                # Grab-and-hold: the fist that selected the bird keeps holding
+                # it, so aiming begins immediately and opening the hand fires.
+                # The old scheme needed a second pinch only because selecting
+                # and aiming shared one gesture; fist/open does not.
+                self._is_aiming = True
+                self._was_unpinched_after_armed = True
                 self.state = "ARMED"
         else:
             self._last_click_fired = False
 
     def _update_armed(self, g: dict):
         """
-        Pinch Slingshot Controls:
-        1. On selection, bird stays IDLE in slingshot at (SLING_X, SLING_Y).
-        2. Moving hand without pinching does NOT pull the slingshot.
-        3. Pinching (3-finger pinch) a 2nd time activates AIMING & locks the anchor.
-        4. Moving hand while pinching pulls the slingshot rubber band.
-        5. Releasing the pinch launches the bird (if pull >= MIN_FIRE_PULL).
+        Fist-grab slingshot controls:
+        1. A closed fist in the carousel grabs a bird; aiming starts at once and
+           the anchor locks to where the hand was.
+        2. Moving the fist pulls the slingshot rubber band.
+        3. Opening the hand launches the bird (if pull >= MIN_FIRE_PULL); a
+           shorter pull just drops the bird back onto the sling.
+        4. Lifting an open hand into the carousel strip cancels and re-selects.
         """
         bird = self.current_bird
         if bird is None:
@@ -556,28 +560,23 @@ class Game:
         if self._armed_timer > 0:
             self._armed_timer -= 1
 
-        is_pinching = g.get("is_pinching", False) or g.get("is_3_finger_pinching", False)
+        # Closed fist = holding the bird. Opening the hand releases it.
+        is_grabbing = g.get("is_fist", False)
 
-        # Allow player to cancel ARMED state and switch birds anytime by showing an Open Palm ✋
-        # or moving unpinched hand up into the top carousel area!
-        if g.get("is_open_palm", False) or (not is_pinching and g.get("hand_visible", False) and float(g.get("pinch_pos", g["index_pos"])[1]) <= CAROUSEL_SELECTION_MAX_Y):
+        # Cancel by lifting the opened hand into the carousel strip. An open palm
+        # can no longer cancel on its own: it is now the release gesture, so it
+        # would cancel every shot at the exact moment of firing.
+        if (not is_grabbing and g.get("hand_visible", False)
+                and float(g.get("pinch_pos", g["index_pos"])[1]) <= CAROUSEL_SELECTION_MAX_Y):
             self.current_bird = None
             self._is_aiming = False
             self.state = "SELECTION"
             return
 
-        # 1. Require user to unpinch at least once after entering ARMED before aiming can begin
-        if not self._was_unpinched_after_armed:
-            if not is_pinching:
-                self._was_unpinched_after_armed = True
-            bird.x = float(SLING_X)
-            bird.y = float(SLING_Y)
-            return
-
-        # 2. Handle UNPINCHED state
-        if not is_pinching:
+        # 1. Handle OPEN-HAND state
+        if not is_grabbing:
             if self._is_aiming:
-                # User was aiming and just RELEASED the pinch -> FIRE!
+                # User was aiming and just OPENED their hand -> FIRE!
                 rel_dx = (self._smoothed_ix - self._aim_anchor_x) * self._AIM_PULL_GAIN
                 rel_dy = (self._smoothed_iy - self._aim_anchor_y) * self._AIM_PULL_GAIN
                 dist = math.sqrt(rel_dx * rel_dx + rel_dy * rel_dy)
@@ -608,7 +607,7 @@ class Game:
                 bird.y = float(SLING_Y)
             return
 
-        # 3. Handle PINCHED state (actively aiming)
+        # 2. Handle CLOSED-FIST state (actively aiming)
         if g.get("hand_visible", False):
             raw_ix, raw_iy = g.get("pinch_pos", g["index_pos"])
             ix, iy = float(raw_ix), float(raw_iy)
