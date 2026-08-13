@@ -1,0 +1,523 @@
+/* style.css — Classic Cartoon Angry Birds Game UI Design System */
+
+:root {
+  --wood-light: #d89e5a;
+  --wood-mid: #b87938;
+  --wood-dark: #824f1c;
+  --wood-border: #4d2d0c;
+  --wood-shadow: #2d1906;
+
+  --gold-main: #ffcc00;
+  --gold-shadow: #c79c00;
+  
+  --green-main: #4caf50;
+  --green-shadow: #2e7d32;
+
+  --red-main: #ff3b30;
+  --red-shadow: #b3241c;
+
+  --bg-sky: #7bd5ff;
+  --bg-dark-ground: #1a2312;
+  
+  --text-game: #ffffff;
+  --text-dark: #3d2412;
+  --text-muted: #94a3b8;
+
+  --font-game: 'Fredoka', 'Outfit', -apple-system, sans-serif;
+  --font-body: 'Inter', -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: #0d131f;
+  background-image: 
+    radial-gradient(circle at 50% 20%, #1e293b 0%, #0d131f 100%);
+  color: var(--text-game);
+  font-family: var(--font-body);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+#app {
+  width: 100%;
+  max-width: 1320px;
+  padding: 16px;
+}
+
+/* ── Layout Wrapper ────────────────────────────────────────────────────────── */
+.game-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+}
+
+/* ── Wooden Plank Header Banner ────────────────────────────────────────────── */
+.game-header {
+  text-align: center;
+}
+
+.wood-banner {
+  background: linear-gradient(180deg, var(--wood-light) 0%, var(--wood-mid) 60%, var(--wood-dark) 100%);
+  border: 4px solid var(--wood-border);
+  box-shadow: 0 6px 0 var(--wood-shadow), 0 10px 20px rgba(0, 0, 0, 0.4);
+  border-radius: 14px;
+  padding: 10px 36px;
+  position: relative;
+  display: inline-block;
+}
+
+.logo-text-game {
+  font-family: var(--font-game);
+  font-weight: 700;
+  font-size: 2.2rem;
+  letter-spacing: 1px;
+  color: var(--gold-main);
+  text-shadow: 3px 3px 0 var(--wood-shadow), -1px -1px 0 var(--wood-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.badge-vision {
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  background: linear-gradient(180deg, var(--red-main) 0%, var(--red-shadow) 100%);
+  color: #fff;
+  border: 2px solid #5a0c07;
+  border-radius: 8px;
+  box-shadow: 0 3px 0 #3d0502;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.tagline-game {
+  font-family: var(--font-game);
+  font-size: 0.9rem;
+  color: #fef08a;
+  text-shadow: 1px 1px 0 var(--wood-shadow);
+  margin-top: 2px;
+}
+
+/* ── Top Telemetry & Control HUD Bar ───────────────────────────────────────── */
+.hud-bar-top {
+  width: 1280px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.level-selector-group,
+.hud-stats-group,
+.hud-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ── Chunky 3D Embossed Buttons ────────────────────────────────────────────── */
+.btn-3d {
+  font-family: var(--font-game);
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 8px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  outline: none;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, filter 0.15s ease;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-wood {
+  background: linear-gradient(180deg, #d49a5b 0%, #a66a2c 100%);
+  border: 3px solid var(--wood-border);
+  color: #fff;
+  text-shadow: 1px 2px 0 var(--wood-shadow);
+  box-shadow: 0 5px 0 var(--wood-shadow);
+}
+
+.btn-wood:hover {
+  filter: brightness(1.1);
+}
+
+.btn-wood.active-lvl {
+  background: linear-gradient(180deg, var(--gold-main) 0%, var(--gold-shadow) 100%);
+  border-color: #876200;
+  color: #3d2412;
+  text-shadow: none;
+  box-shadow: 0 5px 0 #5e4400;
+}
+
+.btn-gold {
+  background: linear-gradient(180deg, var(--gold-main) 0%, var(--gold-shadow) 100%);
+  border: 3px solid #876200;
+  color: #3d2412;
+  font-weight: 700;
+  box-shadow: 0 5px 0 #5e4400;
+}
+
+.btn-green {
+  background: linear-gradient(180deg, var(--green-main) 0%, var(--green-shadow) 100%);
+  border: 3px solid #1b4d1e;
+  color: #fff;
+  font-weight: 700;
+  text-shadow: 1px 2px 0 #0d290f;
+  box-shadow: 0 5px 0 #0e2e10;
+}
+
+.btn-green:hover, .btn-gold:hover {
+  filter: brightness(1.1);
+}
+
+.btn-3d:active {
+  transform: translateY(4px);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.5);
+}
+
+.btn-large {
+  font-size: 1.25rem;
+  padding: 14px 36px;
+  border-radius: 12px;
+}
+
+/* ── Wooden HUD Cards ──────────────────────────────────────────────────────── */
+.wood-card {
+  background: linear-gradient(180deg, #c78d4e 0%, #9e6328 100%);
+  border: 3px solid var(--wood-border);
+  border-radius: 12px;
+  box-shadow: 0 5px 0 var(--wood-shadow), 0 8px 16px rgba(0, 0, 0, 0.3);
+  padding: 6px 14px;
+}
+
+.stat-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stat-icon {
+  font-size: 1.3rem;
+}
+
+.stat-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-label {
+  font-family: var(--font-game);
+  font-size: 0.68rem;
+  color: #fde68a;
+  text-shadow: 1px 1px 0 var(--wood-shadow);
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-family: var(--font-game);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 2px 2px 0 var(--wood-shadow);
+}
+
+/* ── Viewport Container ────────────────────────────────────────────────────── */
+.viewport-container {
+  position: relative;
+  width: 1280px;
+  height: 720px;
+  background-color: #05070c;
+  border: 6px solid var(--wood-border);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.7), 
+              0 6px 0 var(--wood-shadow);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#gameCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  display: block;
+}
+
+#webcam {
+  display: none; /* hidden raw video element */
+}
+
+/* ── Floating Webcam Telemetry Card (Top Right) ───────────────────────────── */
+.webcam-card {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 25;
+  background: linear-gradient(180deg, #3a220e 0%, #201205 100%);
+  border: 3px solid var(--wood-border);
+  border-radius: 12px;
+  padding: 8px 10px;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 170px;
+}
+
+.webcam-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cam-dot {
+  width: 8px;
+  height: 8px;
+  background-color: #22c55e;
+  border-radius: 50%;
+}
+
+.cam-dot.pulsing {
+  animation: pulse 1.5s infinite;
+}
+
+.cam-title {
+  font-family: var(--font-game);
+  font-size: 0.65rem;
+  color: #fde68a;
+  letter-spacing: 0.5px;
+}
+
+.fps-badge {
+  font-family: var(--font-game);
+  font-size: 0.65rem;
+  color: var(--gold-main);
+}
+
+.webcam-preview-container {
+  position: relative;
+  width: 100%;
+  height: 48px;
+  background-color: #0f172a;
+  border-radius: 6px;
+  border: 1.5px solid #475569;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.gesture-badge {
+  font-family: var(--font-game);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.status-ready {
+  background-color: #166534;
+  color: #86efac;
+  border: 1px solid #22c55e;
+}
+
+/* ── Overlay Modals (Start & Victory) ──────────────────────────────────────── */
+.overlay-card {
+  position: absolute;
+  z-index: 30;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  background: rgba(10, 14, 23, 0.78);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.overlay-card.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-content {
+  width: 480px;
+  padding: 30px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  align-items: center;
+}
+
+.modal-header h2 {
+  font-family: var(--font-game);
+  font-size: 2rem;
+  color: var(--gold-main);
+  text-shadow: 2px 2px 0 var(--wood-shadow);
+}
+
+.modal-content p {
+  font-size: 0.95rem;
+  color: #f1f5f9;
+  line-height: 1.5;
+}
+
+.gesture-guide-mini {
+  display: flex;
+  gap: 16px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 12px;
+  border-radius: 10px;
+  width: 100%;
+  justify-content: space-around;
+}
+
+.guide-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: #e2e8f0;
+}
+
+.guide-icon {
+  font-size: 1.2rem;
+}
+
+/* ── Victory Card ──────────────────────────────────────────────────────────── */
+.victory-card {
+  width: 440px;
+  animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.victory-title {
+  font-family: var(--font-game);
+  font-size: 2.2rem;
+  color: var(--gold-main);
+  text-shadow: 3px 3px 0 var(--wood-shadow);
+}
+
+.star-rating {
+  display: flex;
+  gap: 12px;
+  font-size: 3rem;
+  margin: 4px 0;
+}
+
+.star {
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
+  animation: starBounce 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
+.star-1 { animation-delay: 0.1s; }
+.star-2 { animation-delay: 0.25s; }
+.star-3 { animation-delay: 0.4s; }
+
+.victory-score-box {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 10px 24px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+}
+
+.vic-label {
+  font-family: var(--font-game);
+  font-size: 0.75rem;
+  color: #fde68a;
+}
+
+.vic-value {
+  font-family: var(--font-game);
+  font-size: 2rem;
+  color: #fff;
+  text-shadow: 2px 2px 0 var(--wood-shadow);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 14px;
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+.game-footer {
+  width: 1280px;
+}
+
+.footer-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+}
+
+.key-hints {
+  font-family: var(--font-game);
+  font-size: 0.88rem;
+  color: #fef08a;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.key-badge {
+  background: #3d2412;
+  border: 1.5px solid var(--wood-border);
+  color: var(--gold-main);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  box-shadow: 0 2px 0 #1f1208;
+}
+
+.key-divider {
+  color: #a66a2c;
+  margin: 0 4px;
+}
+
+.game-hint {
+  font-family: var(--font-game);
+  font-size: 0.88rem;
+  color: #ffffff;
+  text-shadow: 1px 1px 0 var(--wood-shadow);
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ── Animations ────────────────────────────────────────────────────────────── */
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+@keyframes starBounce {
+  0% { transform: scale(0) rotate(-45deg); opacity: 0; }
+  80% { transform: scale(1.2) rotate(10deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes popIn {
+  from { transform: scale(0.8); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
