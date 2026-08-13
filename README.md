@@ -8,9 +8,25 @@ You play them with your hands and body in front of a webcam - no controller.
 
 | Game | Input | Entry point |
 | --- | --- | --- |
-| **AngryBirds** | Hand tracking - pinch to draw the slingshot, release to fire | `AngryBirds/main.py` |
-| **flappy** | Time-of-Flight depth - move your hand toward/away from the camera to flap | `flappy/tof_flappy.py` |
+| **AngryBirds** | Hand signs - close a fist to grab the bird, open your hand to fire | `AngryBirds/main.py` |
+| **flappy** | Finger tracking - raise and lower your index finger to fly | `flappy/tof_flappy.py` |
 | **punchy** | Time-of-Flight depth - punch toward the camera to hit targets | `punchy/tof_punch.py` |
+
+### Controls
+
+AngryBirds reads hand signs rather than pinch gestures. Make a **fist** over a
+bird in the top carousel to grab it — aiming starts immediately — move the fist
+to pull the slingshot, then **open your hand** to fire. To swap birds, open your
+hand and lift it back into the carousel strip.
+
+Both AngryBirds and flappy share two stabilisation keys, because there are two
+independent smoothing systems and they are worth feeling separately:
+
+| Key | Effect |
+| --- | --- |
+| `K` | Toggle One-Euro landmark smoothing. Off = raw positions: maximally responsive, visibly jittery at rest. |
+| `L` | Toggle the ToF depth stabilizer, which runs a 3-second hold-still calibration. |
+| `X` | Cancel a calibration already in progress. |
 
 ## Setup
 
