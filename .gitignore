@@ -1,0 +1,23 @@
+# Environments
+.venv/
+venv/
+env/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build/install logs
+*.log
+
+# Node
+node_modules/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
