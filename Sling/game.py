@@ -4,6 +4,8 @@ game.py — Game state machine.
 States
 ------
 SELECTION  : carousel, choose bird via pinch OR z-push click
+READY      : bird grabbed, anchor not yet locked — move the fist anywhere
+             comfortable and hold still to lock the aim origin
 ARMED      : pinch to drag slingshot, release to fire
 FLIGHT     : bird in flight, collision detection running
 DONE       : all birds used
@@ -24,7 +26,7 @@ import random
 import numpy as np
 from bird import Bird
 from config import BIRD_ORDER, BIRD_COLOURS as COLOURS
-from block import Block, Pig
+from block import Block, Target
 from slingshot import SLING_X, SLING_Y, FORK_LEFT, FORK_RIGHT
 from physics import (
     POWER_FACTOR, MAX_PULL, FLOOR_Y, BIRD_LINGER,
@@ -34,7 +36,7 @@ from physics import (
 import slingshot
 import ui
 from config import (
-    PTS_BLOCK, PTS_DEBRIS, PTS_PIG,
+    PTS_BLOCK, PTS_DEBRIS, PTS_TARGET,
     SCORE_POPUP_LIFETIME, SCORE_POPUP_RISE,
     ARMED_GRACE_FRAMES, MIN_FIRE_PULL, EDGE_MARGIN,
     AIM_PULL_GAIN, INPUT_MOVEMENT_MAGNIFICATION, AIM_EMA_HOLD, AIM_EMA_MIN, AIM_EMA_MAX,
@@ -46,7 +48,12 @@ from config import (
     PLATFORM_W, PLATFORM_H, PLATFORM_HEALTH,
     BIRD_STOP_SPEED,
     BW, BH, TH, LEVEL_X_OFF, LEVEL_NAMES,
-    CAROUSEL_SPACING, CAROUSEL_SELECTION_MAX_Y
+    CAROUSEL_SPACING, CAROUSEL_SELECTION_MAX_Y,
+    GRAB_RELEASE_FRAMES, LOST_HAND_FIRE_FRAMES,
+    GRIP_RELEASE_OPENNESS, GRIP_RELEASE_FRAMES,
+    GRIP_RELEASE_GATE, GRIP_RELEASE_RATE,
+    READY_SETTLE_FRAMES, READY_SETTLE_RADIUS,
+    READY_MAX_FRAMES, READY_LOST_CANCEL_FRAMES,
 )
 
 # ── Score constants ────────────────────────────────────────────────────────────────
@@ -98,8 +105,8 @@ def _level_easy() -> list[Block]:
     # Single block on top
     blocks.append(Block(950, FLOOR_Y - BH * 2 - TH, BW, BH, "wood"))
     
-    # Pig
-    blocks.append(Pig(950, FLOOR_Y - BH * 2 - TH - 30, radius=20))
+    # Target
+    blocks.append(Target(950, FLOOR_Y - BH * 2 - TH - 30, radius=20))
 
     return blocks
 
@@ -128,9 +135,9 @@ def _level_medium() -> list[Block]:
     blocks.append(Block(920, FLOOR_Y - BH * 3 - TH * 2, BW, BH, "ice"))
     
     # Pigs
-    blocks.append(Pig(860, FLOOR_Y - BH * 2 - TH * 2 - 30, radius=18))
-    blocks.append(Pig(980, FLOOR_Y - BH * 2 - TH * 2 - 30, radius=18))
-    blocks.append(Pig(920, FLOOR_Y - BH * 3 - TH * 2 - 30, radius=18))
+    blocks.append(Target(860, FLOOR_Y - BH * 2 - TH * 2 - 30, radius=18))
+    blocks.append(Target(980, FLOOR_Y - BH * 2 - TH * 2 - 30, radius=18))
+    blocks.append(Target(920, FLOOR_Y - BH * 3 - TH * 2 - 30, radius=18))
 
     return blocks
 
@@ -167,9 +174,9 @@ def _level_hard() -> list[Block]:
     blocks.append(Block(1100, FLOOR_Y - BH, BW, BH, "wood"))
     
     # Pigs
-    blocks.append(Pig(800, FLOOR_Y - BH * 3 - TH - 30, radius=15))
-    blocks.append(Pig(1020, FLOOR_Y - BH * 3 - TH - 30, radius=15))
-    blocks.append(Pig(930, FLOOR_Y - BH * 3 - TH - 30, radius=20))
+    blocks.append(Target(800, FLOOR_Y - BH * 3 - TH - 30, radius=15))
+    blocks.append(Target(1020, FLOOR_Y - BH * 3 - TH - 30, radius=15))
+    blocks.append(Target(930, FLOOR_Y - BH * 3 - TH - 30, radius=20))
 
     return blocks
 
@@ -241,9 +248,25 @@ class Game:
         self._SEL_DEBOUNCE: int = SEL_DEBOUNCE_FRAMES  # frames needed to confirm selection
         # Edge-fire guard: only allow edge-exit firing after hand was inside frame
         self._armed_inside: bool = False
+        # Grab hysteresis: consecutive frames the hand has not read as a fist
+        # (fallback path only — see _still_gripping)
+        self._release_frames: int = 0
+        # Grip release: consecutive frames the hand has read as opening, and the
+        # previous frame's openness so a snap release can be caught by its rate.
+        self._open_frames: int = 0
+        self._prev_openness: float = 0.0
+        # Consecutive frames the tracker has seen no hand at all while aiming
+        self._lost_frames: int = 0
         # 3-Finger Pinch Aiming state flags
         self._is_aiming: bool = False
         self._was_unpinched_after_armed: bool = False
+        # READY phase: hand travels freely while the anchor stays unlocked
+        self._ready_frames: int = 0                    # frames spent in READY
+        self._settle_frames: int = 0                   # consecutive near-still frames
+        self._settle_ref_x: float = float(SLING_X)     # centre of the stillness test
+        self._settle_ref_y: float = float(SLING_Y)
+        self._settle_pos: tuple[float, float] | None = None   # where to draw the ring
+        self._settle_forced: bool = False              # locked by timeout, not stillness
         self._shake_frames: int = 0
         self._shake_intensity: int = 0
         self._final_stars: int = 0
@@ -283,6 +306,8 @@ class Game:
         # ── State machine (Input-driven) ──────────────────────────────────
         if self.state == "SELECTION":
             self._update_selection(gesture)
+        elif self.state == "READY":
+            self._update_ready(gesture)
         elif self.state == "ARMED":
             self._update_armed(gesture)
 
@@ -306,16 +331,16 @@ class Game:
             b.update()
             if was_active and not b.active:
                 # Block just broke — score + debris
-                is_pig = getattr(b, "is_pig", False) or isinstance(b, Pig)
-                if is_pig:
-                    pts = PTS_PIG
+                is_target = getattr(b, "is_target", False) or isinstance(b, Target)
+                if is_target:
+                    pts = PTS_TARGET
                 else:
                     is_big = b.rect[2] > 20 and b.rect[3] > 20
                     pts = PTS_BLOCK if is_big else PTS_DEBRIS
                 self.score += pts
                 self.score_popups.append(ScorePopup(b.cx, b.cy, pts))
 
-                if not is_pig and is_big:
+                if not is_target and is_big:
                     hw = b.rect[2] / 2
                     hh = b.rect[3] / 2
                     for i in range(2):
@@ -358,10 +383,10 @@ class Game:
         self.score_popups = [p for p in self.score_popups if p.update()]
 
         # ── Check win condition ───────────────────────────────────────────
-        if self.state in ("SELECTION", "ARMED", "FLIGHT"):
+        if self.state in ("SELECTION", "READY", "ARMED", "FLIGHT"):
             # If no target pigs remain
-            has_pigs = any(getattr(b, "is_pig", False) for b in self.blocks)
-            if not has_pigs:
+            has_targets = any(getattr(b, "is_target", False) for b in self.blocks)
+            if not has_targets:
                 # Calculate bonus and stars
                 from config import PTS_UNUSED_BIRD, STAR_1_SCORE, STAR_2_SCORE, STAR_3_SCORE
                 self._final_bonus = len(self.bird_queue) * PTS_UNUSED_BIRD
@@ -408,6 +433,22 @@ class Game:
         if self.state == "SELECTION":
             slingshot.draw(frame, bird_pos=None)
             ui.draw_carousel(frame, self.bird_queue, self.selected_idx, rot_angle_3d=self.rot_angle_3d)
+
+        elif self.state == "READY":
+            # Bird waits on the sling with a slack band — nothing is pulled yet,
+            # so it draws exactly like the idle slingshot with the bird added.
+            bird = self.current_bird
+            bp = (bird.x + shake_x, bird.y + shake_y)
+            slingshot.draw_back(frame, bird_pos=bp, pull_dist=0.0)
+            bird.draw(frame)
+            slingshot.draw_front(frame, bird_pos=bp, pull_dist=0.0)
+
+            if self._settle_pos is not None:
+                progress = min(1.0, self._settle_frames / READY_SETTLE_FRAMES)
+                ui.draw_settle_ring(frame, self._settle_pos[0], self._settle_pos[1],
+                                    progress=progress,
+                                    radius=READY_SETTLE_RADIUS,
+                                    timeout_progress=min(1.0, self._ready_frames / READY_MAX_FRAMES))
 
         elif self.state == "ARMED":
             bird = self.current_bird
@@ -518,36 +559,168 @@ class Game:
                 self.current_bird.on_slingshot = True
                 self.current_bird.x = float(SLING_X)
                 self.current_bird.y = float(SLING_Y)
-                # Anchor relative aiming to current hand position
-                if g.get("hand_visible", False):
-                    anc_x, anc_y = g.get("pinch_pos", g["index_pos"])
-                else:
-                    anc_x, anc_y = float(SLING_X), float(SLING_Y)
-                self._aim_anchor_x = float(anc_x)
-                self._aim_anchor_y = float(anc_y)
-                self._smoothed_ix  = float(anc_x)
-                self._smoothed_iy  = float(anc_y)
-                self._armed_inside = False         # reset edge-fire guard
-                self._armed_timer = 0              # immediate readiness
-                # Grab-and-hold: the fist that selected the bird keeps holding
-                # it, so aiming begins immediately and opening the hand fires.
-                # The old scheme needed a second pinch only because selecting
-                # and aiming shared one gesture; fist/open does not.
-                self._is_aiming = True
+                self._release_frames = 0           # fresh grab hysteresis
+                self._lost_frames = 0              # fresh dropout counter
+                # Seed the grip signal from this frame so the first openness
+                # reading is not compared against a stale one and read as a
+                # release the instant the bird is picked up.
+                self._open_frames = 0
+                self._prev_openness = float(g.get("grip_openness", 0.0))
+                # Grab-and-hold, but not grab-and-aim. Selection only happens up
+                # in the carousel strip, so anchoring the aim here would pin
+                # every pull to a raised arm. READY lets the fist carry the bird
+                # down to wherever the player actually wants to aim from; the
+                # anchor locks when they stop moving.
+                self._is_aiming = False
                 self._was_unpinched_after_armed = True
-                self.state = "ARMED"
+                self._enter_ready(g)
         else:
             self._last_click_fired = False
 
+    def _enter_ready(self, g: dict):
+        """SELECTION → READY. The bird is held but the aim origin is not fixed."""
+        if g.get("hand_visible", False):
+            hx, hy = g.get("pinch_pos", g["index_pos"])
+        else:
+            hx, hy = float(SLING_X), float(SLING_Y)
+        self._ready_frames  = 0
+        self._settle_frames = 0
+        self._settle_ref_x  = float(hx)
+        self._settle_ref_y  = float(hy)
+        self._settle_pos    = (float(hx), float(hy))
+        self._settle_forced = False
+        self.state = "READY"
+
+    def _lock_anchor(self, x: float, y: float, forced: bool = False):
+        """READY → ARMED. Whatever position the hand settled in becomes the
+        origin every later pull is measured from."""
+        self._aim_anchor_x = float(x)
+        self._aim_anchor_y = float(y)
+        self._smoothed_ix  = float(x)
+        self._smoothed_iy  = float(y)
+        self._armed_inside = False         # reset edge-fire guard
+        self._armed_timer  = 0             # immediate readiness
+        self._release_frames = 0
+        self._open_frames    = 0
+        self._lost_frames    = 0
+        self._is_aiming      = True
+        self._settle_forced  = forced
+        self.state = "ARMED"
+
+    def _still_gripping(self, g: dict) -> bool:
+        """
+        Is the hand still holding the bird?
+
+        Read from `grip_openness`, the engine's continuous undebounced grip
+        signal, so the hold ends within a frame or two of the fingers actually
+        moving. The old test — `is_fist` plus GRAB_RELEASE_FRAMES of hysteresis
+        — took around a third of a second to notice an open hand, and the aim
+        kept tracking the fingertip centroid throughout, which is what dragged
+        the shot off target. See config.py for the thresholds.
+
+        A frame with no hand is not evidence either way: the grip counters hold
+        where they are, so a tracking dropout freezes the pull rather than
+        releasing it. Callers handle a hand that stays gone via _lost_frames.
+        """
+        if not g.get("hand_visible", False):
+            return True
+
+        openness = g.get("grip_openness")
+        if openness is None:
+            # Engine predates the continuous signal — fall back to the sign.
+            if g.get("is_fist", False):
+                self._release_frames = 0
+            else:
+                self._release_frames += 1
+            return self._release_frames < GRAB_RELEASE_FRAMES
+
+        opening_rate = openness - self._prev_openness
+        self._prev_openness = openness
+
+        if openness >= GRIP_RELEASE_OPENNESS:
+            self._open_frames += 1
+        else:
+            self._open_frames = 0
+
+        # A hand thrown open clears both tests on the same frame it moves.
+        if openness >= GRIP_RELEASE_GATE and opening_rate >= GRIP_RELEASE_RATE:
+            return False
+
+        return self._open_frames < GRIP_RELEASE_FRAMES
+
+    def _update_ready(self, g: dict):
+        """
+        Settle phase between grabbing a bird and aiming it.
+
+        The fist keeps holding the bird, but hand movement does *not* pull the
+        band — the player is free to bring their arm down from the carousel to
+        wherever they actually want to shoot from. The anchor locks the moment
+        the hand holds still (READY_SETTLE_FRAMES frames inside a small radius),
+        so any resting position works: high, low, seated, off to one side.
+
+        Opening the hand here puts the bird back rather than firing it: there is
+        no pull to launch, and an open hand in READY is the natural "never mind".
+        """
+        bird = self.current_bird
+        if bird is None:
+            self.state = "SELECTION"
+            return
+
+        # Nothing is pulled yet — the bird rides the fork.
+        bird.x = float(SLING_X)
+        bird.y = float(SLING_Y)
+
+        self._ready_frames += 1
+
+        if not self._still_gripping(g):
+            # Let go before settling → bird goes back on the shelf.
+            self.current_bird = None
+            self._settle_pos = None
+            self.state = "SELECTION"
+            return
+
+        if not g.get("hand_visible", False):
+            self._lost_frames += 1
+            if self._lost_frames >= READY_LOST_CANCEL_FRAMES:
+                self.current_bird = None
+                self._settle_pos = None
+                self.state = "SELECTION"
+            return
+        self._lost_frames = 0
+
+        raw_ix, raw_iy = g.get("pinch_pos", g["index_pos"])
+        ix, iy = float(raw_ix), float(raw_iy)
+        self._settle_pos = (ix, iy)
+
+        # Stillness test: stay within READY_SETTLE_RADIUS of the reference point
+        # and the streak grows; break out of it and the reference moves to the
+        # new position. A slow deliberate drift still counts as settling, which
+        # is what a player easing their arm into place actually looks like.
+        if distance((ix, iy), (self._settle_ref_x, self._settle_ref_y)) <= READY_SETTLE_RADIUS:
+            self._settle_frames += 1
+        else:
+            self._settle_ref_x = ix
+            self._settle_ref_y = iy
+            self._settle_frames = 1
+
+        if self._settle_frames >= READY_SETTLE_FRAMES:
+            self._lock_anchor(ix, iy, forced=False)
+        elif self._ready_frames >= READY_MAX_FRAMES:
+            # Never strand the player in a phase they may not know they are in.
+            self._lock_anchor(ix, iy, forced=True)
+
     def _update_armed(self, g: dict):
         """
-        Fist-grab slingshot controls:
-        1. A closed fist in the carousel grabs a bird; aiming starts at once and
-           the anchor locks to where the hand was.
-        2. Moving the fist pulls the slingshot rubber band.
-        3. Opening the hand launches the bird (if pull >= MIN_FIRE_PULL); a
-           shorter pull just drops the bird back onto the sling.
-        4. Lifting an open hand into the carousel strip cancels and re-selects.
+        Fist-grab slingshot controls, entered from READY with the anchor already
+        locked wherever the player settled:
+        1. Moving the fist pulls the slingshot rubber band, measured from that
+           anchor rather than from the carousel where the bird was picked up.
+        2. Opening the hand launches the bird (if pull >= MIN_FIRE_PULL); a
+           shorter pull returns the bird to the carousel, and the next grab runs
+           a fresh READY settle so the anchor can be repositioned.
+        3. Losing the hand mid-pull holds the aim for a few frames, then fires —
+           a release close to the camera drops off the tracker before its open
+           frames can be counted.
         """
         bird = self.current_bird
         if bird is None:
@@ -560,51 +733,42 @@ class Game:
         if self._armed_timer > 0:
             self._armed_timer -= 1
 
-        # Closed fist = holding the bird. Opening the hand releases it.
-        is_grabbing = g.get("is_fist", False)
+        # Closed fist = holding the bird; the hand starting to open fires it.
+        is_grabbing = self._still_gripping(g)
 
-        # Cancel by lifting the opened hand into the carousel strip. An open palm
-        # can no longer cancel on its own: it is now the release gesture, so it
-        # would cancel every shot at the exact moment of firing.
-        if (not is_grabbing and g.get("hand_visible", False)
-                and float(g.get("pinch_pos", g["index_pos"])[1]) <= CAROUSEL_SELECTION_MAX_Y):
-            self.current_bird = None
-            self._is_aiming = False
-            self.state = "SELECTION"
-            return
+        # A hand that stays gone is a different story. Releasing near the camera
+        # pushes the fingers out of MediaPipe's reach before the open frames can
+        # be counted, so waiting for them would strand the bird on the band.
+        # Fire the pull we already have instead.
+        if g.get("hand_visible", False):
+            self._lost_frames = 0
+        elif self._is_aiming:
+            self._lost_frames += 1
+            if (self._lost_frames >= LOST_HAND_FIRE_FRAMES
+                    and self._pull_distance() >= MIN_FIRE_PULL):
+                self._fire_bird(bird)
+                self._is_aiming = False
+                return
 
         # 1. Handle OPEN-HAND state
         if not is_grabbing:
-            if self._is_aiming:
-                # User was aiming and just OPENED their hand -> FIRE!
-                rel_dx = (self._smoothed_ix - self._aim_anchor_x) * self._AIM_PULL_GAIN
-                rel_dy = (self._smoothed_iy - self._aim_anchor_y) * self._AIM_PULL_GAIN
-                dist = math.sqrt(rel_dx * rel_dx + rel_dy * rel_dy)
+            # Opening the hand always ends the hold. A pull worth firing becomes
+            # a shot — this beats any change-of-mind reading on purpose, since a
+            # pull that ends high on the screen is still a shot.
+            if self._pull_distance() >= MIN_FIRE_PULL:
+                self._fire_bird(bird)
+                self._is_aiming = False
+                return
 
-                if dist >= MIN_FIRE_PULL:
-                    self._fire_bird(bird)
-                    self._is_aiming = False
-                    return
-                else:
-                    # Insufficient pull distance: cancel aiming, return to idle
-                    self._is_aiming = False
-                    bird.x = float(SLING_X)
-                    bird.y = float(SLING_Y)
-            else:
-                # If unpinched hand moves up into the carousel selection area (top of screen),
-                # allow player to change their mind and switch birds!
-                if g.get("hand_visible", False):
-                    raw_ix, raw_iy = g.get("pinch_pos", g["index_pos"])
-                    if float(raw_iy) <= CAROUSEL_SELECTION_MAX_Y:
-                        # Return current bird back to queue position and go back to SELECTION state
-                        self.current_bird = None
-                        self._is_aiming = False
-                        self.state = "SELECTION"
-                        return
-
-                # Stay idle in slingshot
-                bird.x = float(SLING_X)
-                bird.y = float(SLING_Y)
+            # Too short to fire: the player let go without committing, so put
+            # the bird back and let them choose again. There is no idle-in-ARMED
+            # state any more — re-grabbing runs the READY settle from scratch,
+            # which is also how the aim origin gets repositioned.
+            self._is_aiming = False
+            self.current_bird = None
+            bird.x = float(SLING_X)
+            bird.y = float(SLING_Y)
+            self.state = "SELECTION"
             return
 
         # 2. Handle CLOSED-FIST state (actively aiming)
@@ -614,13 +778,8 @@ class Game:
         else:
             ix, iy = self._smoothed_ix, self._smoothed_iy
 
-        # Lock anchor on first frame of 2nd pinch
-        if not self._is_aiming:
-            self._is_aiming = True
-            self._aim_anchor_x = ix
-            self._aim_anchor_y = iy
-            self._smoothed_ix  = ix
-            self._smoothed_iy  = iy
+        # The anchor is set once, by READY. Re-anchoring here would silently undo
+        # the position the player just settled into.
 
         # Mark hand as "inside" once it's away from all edges
         if (margin < ix < self.W - margin and margin < iy < self.H - margin):
@@ -733,6 +892,13 @@ class Game:
             self.state = "DONE"
 
     # ── Helpers ───────────────────────────────────────────────────────────────
+
+    def _pull_distance(self) -> float:
+        """How far the smoothed hand has travelled from the aim anchor, in
+        on-screen pull pixels (i.e. after the gain multiplier)."""
+        rel_dx = (self._smoothed_ix - self._aim_anchor_x) * self._AIM_PULL_GAIN
+        rel_dy = (self._smoothed_iy - self._aim_anchor_y) * self._AIM_PULL_GAIN
+        return math.sqrt(rel_dx * rel_dx + rel_dy * rel_dy)
 
     def _launch_velocity(self) -> tuple[float, float]:
         """Compute launch vx/vy from pull position vs slingshot anchor, scaling power factor for larger/heavier birds."""

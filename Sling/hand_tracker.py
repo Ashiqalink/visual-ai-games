@@ -53,13 +53,10 @@ class HandTracker:
         self._z_start_xy: tuple[float, float] | None = None
         self._z_start_val: float | None = None
 
-        # Finger lock state
-        self._locked_pos: tuple[float, float] | None = None
+        # Frames since a hand was last seen (drives the state reset below)
         self._lost_frames: int = 0
 
-        # 3-finger lock state
-        self._lock_progress: float = 0.0
-        self._three_finger_locked: bool = False
+        # 3-finger pinch edge-trigger state
         self._was_3_pinching: bool = False
         self.magnification: float = INPUT_MOVEMENT_MAGNIFICATION
 
@@ -90,114 +87,89 @@ class HandTracker:
         g = self._empty_gesture()
 
         if result.multi_hand_landmarks:
-            selected_lm = self._select_locked_hand(result.multi_hand_landmarks)
-            if selected_lm is not None:
-                lm = selected_lm.landmark
+            lm = result.multi_hand_landmarks[0].landmark
 
-                # ── landmark positions ─────────────────────────────────────────
-                def px(lm_id):
-                    return int(lm[lm_id].x * self.W), int(lm[lm_id].y * self.H)
-                thumb_tip  = px(4)
-                index_tip  = px(8)
-                middle_tip = px(12)
-                c_x = (thumb_tip[0] + index_tip[0] + middle_tip[0]) // 3
-                c_y = (thumb_tip[1] + index_tip[1] + middle_tip[1]) // 3
-                centroid   = (c_x, c_y)
+            # ── landmark positions ─────────────────────────────────────────────
+            def px(lm_id):
+                return int(lm[lm_id].x * self.W), int(lm[lm_id].y * self.H)
+            thumb_tip  = px(4)
+            index_tip  = px(8)
+            middle_tip = px(12)
+            c_x = (thumb_tip[0] + index_tip[0] + middle_tip[0]) // 3
+            c_y = (thumb_tip[1] + index_tip[1] + middle_tip[1]) // 3
+            centroid   = (c_x, c_y)
 
-                g["hand_visible"] = True
-                g["index_pos"]    = index_tip
-                g["thumb_pos"]    = thumb_tip
-                g["middle_pos"]   = middle_tip
-                g["pinch_pos"]    = centroid
+            g["hand_visible"] = True
+            g["index_pos"]    = index_tip
+            g["thumb_pos"]    = thumb_tip
+            g["middle_pos"]   = middle_tip
+            g["pinch_pos"]    = centroid
 
-                # ── 1. Pinch click (2-finger disabled / commented out per user instruction) ──
-                # pinch_dist = distance(thumb_tip, index_tip)
-                # g["is_pinching"] = pinch_dist < PINCH_THRESHOLD
+            # ── 1. Pinch click (2-finger disabled / commented out per user instruction) ──
+            # pinch_dist = distance(thumb_tip, index_tip)
+            # g["is_pinching"] = pinch_dist < PINCH_THRESHOLD
 
-                # ── 2. Z-push click (disabled / commented out per user instruction) ──
-                z_val = lm[8].z          # MediaPipe Z: negative = closer to camera
-                # click_fired, z_delta, xy_drift = self._detect_z_click(z_val, index_tip)
-                click_fired = False
-                g["click_just_fired"] = False
-                g["z_delta"]          = 0.0
-                g["xy_drift"]         = 0.0
+            # ── 2. Z-push click (disabled / commented out per user instruction) ──
+            z_val = lm[8].z          # MediaPipe Z: negative = closer to camera
+            # click_fired, z_delta, xy_drift = self._detect_z_click(z_val, index_tip)
+            click_fired = False
+            g["click_just_fired"] = False
+            g["z_delta"]          = 0.0
+            g["xy_drift"]         = 0.0
 
-                # ── 3-Finger Lock System & 3-Finger Pinch Trigger ──────────────
-                v_thumb = Vector2(thumb_tip[0], thumb_tip[1])
-                v_index = Vector2(index_tip[0], index_tip[1])
-                v_middle = Vector2(middle_tip[0], middle_tip[1])
-                v_centroid = Vector2(c_x, c_y)
+            # ── 3-Finger Pinch Trigger ─────────────────────────────────────────
+            v_thumb = Vector2(thumb_tip[0], thumb_tip[1])
+            v_index = Vector2(index_tip[0], index_tip[1])
+            v_middle = Vector2(middle_tip[0], middle_tip[1])
+            v_centroid = Vector2(c_x, c_y)
 
-                d_ti = v_thumb.distance_to(v_index)
-                d_tm = v_thumb.distance_to(v_middle)
-                d_im = v_index.distance_to(v_middle)
+            dist_t_c = v_thumb.distance_to(v_centroid)
+            dist_i_c = v_index.distance_to(v_centroid)
+            dist_m_c = v_middle.distance_to(v_centroid)
+            max_dist_to_centroid = max(dist_t_c, dist_i_c, dist_m_c)
 
-                distinct = (d_ti > 45.0) and (d_tm > 45.0) and (d_im > 45.0)
+            mag = magnification if magnification is not None else self.magnification
+            effective_radius = THREE_FINGER_PINCH_RADIUS * max(1.0, mag)
+            is_3_pinching = max_dist_to_centroid < effective_radius
 
-                dist_t_c = v_thumb.distance_to(v_centroid)
-                dist_i_c = v_index.distance_to(v_centroid)
-                dist_m_c = v_middle.distance_to(v_centroid)
-                max_dist_to_centroid = max(dist_t_c, dist_i_c, dist_m_c)
+            if is_3_pinching and not self._was_3_pinching:
+                click_fired = True
+            self._was_3_pinching = is_3_pinching
 
-                mag = magnification if magnification is not None else self.magnification
-                effective_radius = THREE_FINGER_PINCH_RADIUS * max(1.0, mag)
-                is_3_pinching = max_dist_to_centroid < effective_radius
+            g["is_pinching"]         = is_3_pinching
+            g["click_just_fired"]    = click_fired
+            g["is_3_finger_pinching"]= is_3_pinching
 
-                if distinct:
-                    self._lock_progress = min(1.0, self._lock_progress + 0.025)
-                elif not is_3_pinching and not self._three_finger_locked:
-                    self._lock_progress = max(0.0, self._lock_progress - 0.04)
+            # ── ToF depth lookup at pinch point ───────────────────────────────
+            tof_act, tof_z, tof_src = self.sample_tof_depth(z_val)
+            g["tof_active"]   = tof_act
+            g["tof_z_m"]      = tof_z
+            g["depth_source"] = tof_src
 
-                if self._lock_progress >= 1.0:
-                    self._three_finger_locked = True
+            # ── 3. Index isolation ────────────────────────────────────────────
+            def dist_sq_from_wrist(tip_id, pip_id):
+                d_tip = (lm[tip_id].x - lm[0].x)**2 + (lm[tip_id].y - lm[0].y)**2
+                d_pip = (lm[pip_id].x - lm[0].x)**2 + (lm[pip_id].y - lm[0].y)**2
+                return d_tip > d_pip
 
-                thumb_locked  = self._lock_progress >= 0.33
-                index_locked  = self._lock_progress >= 0.66
-                middle_locked = self._lock_progress >= 1.0
+            index_ext  = dist_sq_from_wrist(8, 6)
+            middle_ext = dist_sq_from_wrist(12, 10)
+            ring_ext   = dist_sq_from_wrist(16, 14)
+            pinky_ext  = dist_sq_from_wrist(20, 18)
 
-                if self._three_finger_locked:
-                    if is_3_pinching and not self._was_3_pinching:
-                        click_fired = True
-                    self._was_3_pinching = is_3_pinching
-                    g["is_pinching"] = is_3_pinching
-                else:
-                    g["is_pinching"] = False
+            # The wrist anchor is degenerate for the thumb — landmark 2 sits
+            # almost on the wrist, so the tip clears it even with the thumb
+            # folded across the palm. Measure abduction from the pinky MCP
+            # (17) instead, which a tucked thumb moves toward.
+            def _d17(i):
+                return math.hypot(lm[i].x - lm[17].x, lm[i].y - lm[17].y)
 
-                g["click_just_fired"]    = click_fired
-                g["lock_progress"]       = self._lock_progress
-                g["three_finger_locked"] = self._three_finger_locked
-                g["locked_fingers"]      = (thumb_locked, index_locked, middle_locked)
-                g["is_3_finger_pinching"]= is_3_pinching
+            palm_span  = max(math.hypot(lm[0].x - lm[17].x, lm[0].y - lm[17].y), 1e-6)
+            thumb_ext  = (_d17(4) - _d17(3)) > 0.10 * palm_span
+            g["is_index_isolated"] = index_ext and not (ring_ext or pinky_ext)
+            g["is_open_palm"]      = index_ext and middle_ext and ring_ext and pinky_ext and thumb_ext
 
-                # ── ToF depth lookup at pinch point ───────────────────────────
-                tof_act, tof_z, tof_src = self.sample_tof_depth(z_val)
-                g["tof_active"]   = tof_act
-                g["tof_z_m"]      = tof_z
-                g["depth_source"] = tof_src
-
-                # ── 3. Index isolation ────────────────────────────────────────
-                def dist_sq_from_wrist(tip_id, pip_id):
-                    d_tip = (lm[tip_id].x - lm[0].x)**2 + (lm[tip_id].y - lm[0].y)**2
-                    d_pip = (lm[pip_id].x - lm[0].x)**2 + (lm[pip_id].y - lm[0].y)**2
-                    return d_tip > d_pip
-
-                index_ext  = dist_sq_from_wrist(8, 6)
-                middle_ext = dist_sq_from_wrist(12, 10)
-                ring_ext   = dist_sq_from_wrist(16, 14)
-                pinky_ext  = dist_sq_from_wrist(20, 18)
-                thumb_ext  = dist_sq_from_wrist(4, 2)
-                g["is_index_isolated"] = index_ext and not (ring_ext or pinky_ext)
-                g["is_open_palm"]      = index_ext and middle_ext and ring_ext and pinky_ext and thumb_ext
-
-                self._lost_frames = 0
-            else:
-                # selected_lm is None — hand detected but rejected by lock filter
-                self._lost_frames += 1
-                if self._lost_frames > 12:
-                    self._locked_pos = None
-                    self._lock_progress = 0.0
-                    self._three_finger_locked = False
-                    self._was_3_pinching = False
+            self._lost_frames = 0
 
         else:
             self._lost_frames += 1
@@ -205,52 +177,10 @@ class HandTracker:
                 self._z_history.clear()
                 self._z_start_xy  = None
                 self._z_start_val = None
-                self._locked_pos   = None
-                self._lock_progress = 0.0
-                self._three_finger_locked = False
                 self._was_3_pinching = False
 
         self.gesture = g
         return g
-    def _select_locked_hand(self, multi_hand_landmarks):
-        """
-        Locks onto a single index finger. If multiple hands are detected,
-        returns the landmark set whose index tip is closest to the locked position.
-        """
-        MAX_LOCK_DIST_PX = 250.0
-
-        candidates = []
-        for hand_lms in multi_hand_landmarks:
-            lm = hand_lms.landmark
-            ix = lm[8].x * self.W
-            iy = lm[8].y * self.H
-            candidates.append((ix, iy, hand_lms))
-
-        if not candidates:
-            return None
-
-        if self._locked_pos is None:
-            best_ix, best_iy, best_lms = candidates[0]
-            self._locked_pos = (best_ix, best_iy)
-            return best_lms
-
-        lx, ly = self._locked_pos
-        best_lms = None
-        best_dist = float('inf')
-        best_pos = None
-
-        for ix, iy, hand_lms in candidates:
-            dist = math.sqrt((ix - lx) ** 2 + (iy - ly) ** 2)
-            if dist < best_dist:
-                best_dist = dist
-                best_lms = hand_lms
-                best_pos = (ix, iy)
-
-        if best_dist <= MAX_LOCK_DIST_PX:
-            self._locked_pos = best_pos
-            return best_lms
-
-        return None
 
     # ── private ───────────────────────────────────────────────────────────────
     @staticmethod
@@ -269,9 +199,6 @@ class HandTracker:
             "tof_active":          False,
             "tof_z_m":             0.0,
             "depth_source":        "RGB MediaPipe Estimate",
-            "lock_progress":       0.0,
-            "three_finger_locked": False,
-            "locked_fingers":      (False, False, False),
             "is_3_finger_pinching":False,
             "is_open_palm":         False,
         }

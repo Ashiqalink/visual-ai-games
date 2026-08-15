@@ -98,7 +98,49 @@ AIM_EMA_JITTER_LO   = 2.0   # distance below which alpha stays at AIM_EMA_MIN
 AIM_EMA_JITTER_HI   = 20.0  # distance above which alpha reaches AIM_EMA_MAX
 
 SEL_DEBOUNCE_FRAMES  = 6     # stable frames before carousel commits selection
+# Frames the hand must read as *not* a fist before the grab is treated as
+# released. The tracker briefly mis-reads a moving fist as a partly open hand,
+# and without this every such flicker fired or cancelled the shot.
+GRAB_RELEASE_FRAMES  = 5
+
+# ── Letting go ───────────────────────────────────────────────────────────────
+# `is_fist` is far too slow to end a hold. The engine debounces the hand sign
+# over three same-sign frames, and an opening hand cycles through several signs
+# on the way out — each one restarting that count — so it can keep reporting
+# "fist" for ten frames or more after the fingers start to move. Stack
+# GRAB_RELEASE_FRAMES on top and the bird left the band roughly a third of a
+# second after the player let go, all of it spent still tracking an aim point
+# that the splaying fingers were dragging upward.
+#
+# Release now thresholds `grip_openness` instead: a continuous, undebounced
+# 0.0 (curled fist) → 1.0 (fingers straight) signal from the engine.
+# A fist in motion sits near 0.05, so 0.34 leaves a wide noise margin.
+GRIP_RELEASE_OPENNESS = 0.34  # above this the hand is opening, not just moving
+GRIP_RELEASE_FRAMES   = 2     # consecutive frames above it that end the hold
+# Snap-release shortcut: a hand thrown open crosses the whole range in one or
+# two frames, so a large single-frame jump fires without waiting for the count.
+GRIP_RELEASE_GATE     = 0.20  # minimum openness for the rate test to apply
+GRIP_RELEASE_RATE     = 0.18  # openness gained in one frame that means "opening"
+# Frames the hand may stay untracked mid-pull before the shot fires anyway. A
+# hand released close to the camera drops off MediaPipe before its open frames
+# can be counted, and without this the bird stays stuck on the band.
+LOST_HAND_FIRE_FRAMES = 8
 Z_PUSH_DETECT_THRESH = 0.008 # z_delta value above which we consider "Z pushing"
+
+# ── READY phase (grab -> settle -> aim) ──────────────────────────────────────
+# Selecting a bird requires reaching into the carousel strip near the top of the
+# frame. Locking the aim anchor there forced the whole pull to happen with the
+# arm raised, and left far more pull room below the anchor than above it. The
+# READY phase breaks that link: the fist holds the bird while the hand travels
+# anywhere it likes, and the anchor only locks once the hand stops moving.
+READY_SETTLE_FRAMES  = 12   # consecutive near-still frames that lock the anchor
+READY_SETTLE_RADIUS  = 22   # px the hand may wander and still count as "still"
+# Never trap the player in READY. A hand that keeps wandering — camera noise, or
+# simply a player who does not realise they need to hold still — locks anyway.
+READY_MAX_FRAMES     = 150
+# Losing the hand in READY cannot fire anything (there is no pull yet), so a long
+# dropout just puts the bird back rather than guessing at an aim.
+READY_LOST_CANCEL_FRAMES = 30
 
 # Debris spawning
 MAX_DEBRIS           = 20   # cap to preserve FPS

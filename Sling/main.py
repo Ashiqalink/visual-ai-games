@@ -10,9 +10,12 @@ Layout
 
 Controls
 --------
-Gesture – pinch (thumb+index) OR Z-push (move index ~1 inch toward camera)
-  Both gestures fire a "click" event.
-  During ARMED: move index finger to aim, Z-push / edge-exit to fire.
+Fist / open hand, in three phases:
+  SELECTION : hover the carousel strip at the top, close your fist to grab a bird.
+  READY     : keep the fist and bring your hand wherever you want to shoot from —
+              nothing pulls yet. Hold still and the aim origin locks there.
+  ARMED     : move the fist to pull the band, open your hand to fire.
+              A pull too short to fire puts the bird back on the shelf.
 
 Keyboard
 --------
@@ -50,7 +53,9 @@ from config import (
     FRAME_W, FRAME_H, BG_COLOR,
     CAM_W, CAM_H, CAM_MARGIN, CAM_BORDER, CAM_BORDER_COLOR,
     SMOOTH_ALPHA,
-    CURSOR_INDEX_COL, CURSOR_PINCH_COL, CURSOR_FIRE_COL,
+    # CURSOR_PINCH_COL / CURSOR_FIRE_COL are no longer drawn on the canvas —
+    # ui.py uses them for the pinch and fire rows of the HUD panel instead.
+    CURSOR_INDEX_COL,
 )
 
 # (Window / canvas constants now imported from config.py)
@@ -129,8 +134,8 @@ def main():
 
     game    = Game(frame_w=FRAME_W, frame_h=FRAME_H)
 
-    cv2.namedWindow("Angry Birds — Vision", cv2.WINDOW_NORMAL)
-    cv2.resizeWindow("Angry Birds — Vision", FRAME_W, FRAME_H)
+    cv2.namedWindow("Sling", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Sling", FRAME_W, FRAME_H)
 
     # ── FPS & Timing setup ────────────────────────────────────────────────
     prev_time = time.time()
@@ -248,27 +253,18 @@ def main():
             dix = ix
             diy = iy
 
-            # Index fingertip ring
+            # Index fingertip ring — the whole cursor. The pinch-midpoint disc
+            # and the "FIRE!" flash that used to live here sat on top of the
+            # bird and the slingshot band at the exact moment the player is
+            # aiming. Pinch and fire state now read off the HAND SIGN CONTROL
+            # panel in the top-right corner, which is out of the play area.
             cv2.circle(canvas, (dix, diy), 14, CURSOR_INDEX_COL, 2)
             cv2.circle(canvas, (dix, diy),  5, CURSOR_INDEX_COL, -1)
-
-            # Pinch midpoint
-            if gesture["is_pinching"]:
-                px, py = gesture["pinch_pos"]
-                dpx = px
-                cv2.circle(canvas, (dpx, py), 10, CURSOR_PINCH_COL, -1)
-                cv2.circle(canvas, (dpx, py), 14, CURSOR_PINCH_COL,  2)
-
-            # Z-click flash
-            if gesture["click_just_fired"]:
-                cv2.circle(canvas, (dix, diy), 30, CURSOR_FIRE_COL, 3)
-                cv2.putText(canvas, "FIRE!", (dix + 18, diy - 18),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, CURSOR_FIRE_COL, 2, cv2.LINE_AA)
 
         # ── Camera preview — top-right corner ─────────────────────────────
         _paste_cam(canvas, cam_frame)
 
-        cv2.imshow("Angry Birds — Vision", canvas)
+        cv2.imshow("Sling", canvas)
 
         if key in (ord('q'), ord('Q'), 27):
             break
