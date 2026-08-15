@@ -1,11 +1,11 @@
 ---
-name: angry-birds-opencv
-description: Use when working on, modifying, running, or debugging the Angry Birds OpenCV gesture-controlled game codebase (Python OpenCV/MediaPipe desktop & Vite/JS web client).
+name: sling
+description: Use when working on, modifying, running, or debugging the Sling gesture-controlled game codebase (Python OpenCV/MediaPipe desktop & Vite/JS web client).
 ---
 
-# Angry Birds OpenCV — Agent Skill
+# Sling — Agent Skill
 
-This skill provides architectural guidance, file maps, physics parameters, gesture thresholds, and execution workflows for the **Angry Birds OpenCV** codebase.
+This skill provides architectural guidance, file maps, physics parameters, gesture thresholds, and execution workflows for the **Sling** codebase.
 
 ---
 
@@ -118,6 +118,6 @@ To minimize token usage and context load during minor edits (such as CSS styling
 Whenever asking questions, proposing designs, or suggesting code changes, **ALWAYS explicitly state which repository / scope the change applies to:**
 
 - ⚙️ **Game Engine SDK (`visual_ai`)**: Camera pipeline, MediaPipe hand tracking, EMA smoothing, threaded frame queue, pybind11 C++ physics core (`d:\visual ai game engine`).
-- 🎮 **The Game (`angry-birds-opencv`)**: Game loop state machine, level layouts, bird/block entities, slingshot rendering, HUD UI (`d:\angry birds using opencv`).
+- 🎮 **The Game (`sling`)**: Game loop state machine, level layouts, bird/block entities, slingshot rendering, HUD UI (`d:\sling`).
 
 

@@ -1,4 +1,4 @@
-# Workspace Rules for Angry Birds OpenCV & Visual AI
+# Workspace Rules for Sling & Visual AI
 
 ## 🎯 Scope Disambiguation Rule
 
@@ -7,7 +7,7 @@ Whenever asking questions, asking for clarification, proposing architectural cha
 1. ⚙️ **Game Engine SDK (`visual_ai`)** — `d:\visual ai game engine`
    *(Camera feed capture, MediaPipe tracking pipeline, EMA smoothing, frame queues, C++ pybind11 physics core)*
 
-2. 🎮 **The Game (`angry-birds-opencv`)** — `d:\angry birds using opencv`
+2. 🎮 **The Game (`sling`)** — `d:\sling`
    *(Game state machine, bird/block entities, slingshot rendering, level layouts, HUD UI, web frontend)*
    *(Design philosophy: This game is supposed to be a laid back and enjoy game, not a fast paced game.)*
 

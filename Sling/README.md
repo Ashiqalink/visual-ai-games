@@ -1,6 +1,6 @@
-# Angry Birds — OpenCV Gesture-Controlled Game
+# Sling — OpenCV Gesture-Controlled Game
 
-> A physics-based Angry Birds clone driven entirely by **hand gestures** via webcam, powered by MediaPipe, OpenCV, and a custom [Visual AI Game Engine SDK](file:///d:/visual%20ai%20game%20engine).
+> A physics-based slingshot game driven entirely by **hand gestures** via webcam, powered by MediaPipe, OpenCV, and a custom [Visual AI Game Engine SDK](file:///d:/visual%20ai%20game%20engine).
 
 > 🎮 **Design Principle:** This game is supposed to be a laid back and enjoy game, not a fast paced game.
 
@@ -23,7 +23,7 @@
 ## 📁 Project Structure
 
 ```
-angry-birds-using-opencv/
+sling/
 ├── main.py              # Entry point — game loop, camera preview, visual_ai integration
 ├── game.py              # State machine (SELECTION → ARMED → FLIGHT → DONE), scoring, levels
 ├── bird.py              # Bird class — 5 types (Red, Chuck, Bomb, Blues, White), trail/impact FX
@@ -46,7 +46,7 @@ angry-birds-using-opencv/
 │       ├── ui.js
 │       └── style.css
 └── .agents/skills/      # AI Agent Customization Skills for Antigravity
-    └── angry-birds-opencv/
+    └── sling/
         └── SKILL.md
 ```
 

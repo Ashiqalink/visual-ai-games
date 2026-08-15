@@ -1,4 +1,4 @@
-# Angry Birds OpenCV — Visual Camera Game Loop Spec
+# Sling — Visual Camera Game Loop Spec
 
 A design + implementation plan for the core game loop of a gesture-controlled physics-based slingshot game (birds vs. pigs, destructible block structures) using a webcam and AI hand tracking.
 
@@ -75,7 +75,7 @@ while cap.isOpened():
     # 4. Rendering
     render(frame, accumulator / FIXED_DT)
     
-    cv2.imshow("Angry Birds AI", frame)
+    cv2.imshow("Sling", frame)
     
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break

@@ -1,5 +1,5 @@
 """
-test_3d_integration.py — Integration test to verify visual_ai 3D elements in angry-birds-opencv.
+test_3d_integration.py — Integration test to verify visual_ai 3D elements in Sling.
 """
 
 import sys
