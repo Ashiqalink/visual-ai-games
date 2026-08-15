@@ -124,24 +124,42 @@ BIRD_IDLE_SPEED = 0.3   # grounded speed below which the bird deactivates
 
 #  BIRD PROPERTIES
 # =============================================================================
-RED   = "Red"
-CHUCK = "Chuck"
-BOMB  = "Bomb"
-BLUES = "Blues"
-WHITE = "White"
+# Kinds are lowercase because they double as asset filenames — assets/ruby.png,
+# assets/ruby_side.png — and a case-sensitive filesystem is unforgiving about
+# the difference. Display code title-cases them.
+RUBY  = "ruby"
+AMBER = "amber"
+SLATE = "slate"
+AZURE = "azure"
+IVORY = "ivory"
 
-BIRD_ORDER = [RED, CHUCK, BOMB, BLUES, WHITE]
+#: The thing you are trying to hit. Beakless and tailless so it reads as a
+#: different species from the birds, and deliberately plain beyond that — a
+#: snout with two nostrils is the single most recognisable trait of the obvious
+#: inspiration, so there isn't one. Its spec is TARGET_SPEC, further down.
+TARGET = "target"
 
-BIRD_RADII = {RED: 28, CHUCK: 26, BOMB: 30, BLUES: 22, WHITE: 26}
+BIRD_ORDER = [RUBY, AMBER, SLATE, AZURE, IVORY]
 
-BIRD_MASSES = {RED: 1.0, CHUCK: 0.7, BOMB: 1.1, BLUES: 0.5, WHITE: 1.0}
+BIRD_RADII = {RUBY: 28, AMBER: 26, SLATE: 30, AZURE: 22, IVORY: 26}
 
+BIRD_MASSES = {RUBY: 1.0, AMBER: 0.7, SLATE: 1.1, AZURE: 0.5, IVORY: 1.0}
+
+# BGR, to match the OpenCV frames these are drawn onto. Kept in step with the
+# RGB values in BIRD_SPECS below — these tint the trail, impact ring and
+# speed lines, so a mismatch shows up as effects that clash with the sprite.
 BIRD_COLOURS = {
-    RED:   (50,  50,  200),
-    CHUCK: (0,  215,  255),
-    BOMB:  (40,  40,   40),
-    BLUES: (220, 80,   50),
-    WHITE: (240, 240, 240),
+    RUBY:  (58,  74,  226),
+    AMBER: (52,  190, 240),
+    SLATE: (96,  82,  74),
+    AZURE: (214, 148, 72),
+    IVORY: (232, 238, 238),
+}
+
+#: Which 3D primitive stands in for each kind in the depth-tilt pass.
+BIRD_MESH_SHAPES = {
+    RUBY: "sphere", AMBER: "pyramid", SLATE: "sphere",
+    AZURE: "sphere", IVORY: "capsule",
 }
 
 import os
@@ -156,7 +174,7 @@ if _ENGINE_ROOT not in sys.path:
     sys.path.insert(0, _ENGINE_ROOT)
 
 try:
-    from visual_ai import Material, ShaderType
+    from visual_ai import Material, ShaderType, CreatureSpec
 except ImportError:
     from dataclasses import dataclass
     from enum import Enum
@@ -183,6 +201,26 @@ except ImportError:
                 "u_Opacity": self.opacity,
                 "u_ShaderType": self.shader_type.value,
             }
+
+    # A stand-in so this module still imports without the engine. Nothing can
+    # render from it — bird.py needs the real renderer — but tools that only
+    # want tuning constants out of config.py keep working.
+    @dataclass
+    class CreatureSpec:
+        name: str = "bird"
+        body: str = "round"
+        colour: tuple = (226, 74, 58)
+        belly: tuple | None = None
+        outline: tuple = (28, 28, 34)
+        outline_width: float = 0.055
+        beak: tuple = (247, 181, 56)
+        beak_size: float = 0.19
+        eye_size: float = 0.095
+        eye_colour: tuple = (255, 255, 255)
+        pupil: tuple = (28, 28, 34)
+        gloss: float = 0.22
+        tail: float = 0.0
+        scale: float = 1.0
 
 #  BLOCK MATERIALS
 # =============================================================================
@@ -244,51 +282,99 @@ BLOCK_MATERIALS = {
 
 #  CHARACTER 3D MATERIALS & MESH CONFIG
 # =============================================================================
-# Defined within angry-birds-opencv game configuration using visual_ai Material class
+# Defined using the visual_ai Material class. Keys are bird kinds.
 CHARACTER_3D_MATERIALS = {
-    "red": Material(
-        name="RedBirdMat",
+    RUBY: Material(
+        name="RubyMat",
         shader_type=ShaderType.PBR_STANDARD,
-        base_color=(0.92, 0.15, 0.15, 1.0),
+        base_color=(0.89, 0.29, 0.23, 1.0),
         roughness=0.35,
         metallic=0.05,
     ),
-    "chuck": Material(
-        name="ChuckBirdMat",
+    AMBER: Material(
+        name="AmberMat",
         shader_type=ShaderType.PBR_STANDARD,
-        base_color=(0.98, 0.82, 0.12, 1.0),
+        base_color=(0.94, 0.75, 0.20, 1.0),
         roughness=0.30,
         metallic=0.10,
     ),
-    "bomb": Material(
-        name="BombBirdMat",
+    SLATE: Material(
+        name="SlateMat",
         shader_type=ShaderType.PBR_STANDARD,
-        base_color=(0.18, 0.18, 0.22, 1.0),
+        base_color=(0.29, 0.32, 0.38, 1.0),
         roughness=0.40,
         metallic=0.30,
     ),
-    "blues": Material(
-        name="BluesBirdMat",
+    AZURE: Material(
+        name="AzureMat",
         shader_type=ShaderType.PBR_STANDARD,
-        base_color=(0.20, 0.65, 0.95, 1.0),
+        base_color=(0.28, 0.58, 0.84, 1.0),
         roughness=0.25,
         metallic=0.0,
     ),
-    "white": Material(
-        name="WhiteBirdMat",
+    IVORY: Material(
+        name="IvoryMat",
         shader_type=ShaderType.PBR_STANDARD,
-        base_color=(0.95, 0.95, 0.92, 1.0),
+        base_color=(0.93, 0.93, 0.91, 1.0),
         roughness=0.20,
         metallic=0.0,
     ),
-    "pig": Material(
-        name="PigGreenMat",
+    TARGET: Material(
+        name="TargetMat",
         shader_type=ShaderType.PBR_STANDARD,
-        base_color=(0.16, 0.78, 0.32, 1.0),
+        base_color=(0.34, 0.70, 0.38, 1.0),
         roughness=0.35,
         metallic=0.0,
     ),
 }
+
+
+#  CHARACTER ARTWORK
+# =============================================================================
+# The cast, as data. Each entry is everything the engine needs to draw that
+# creature from both angles — there is no per-character drawing code anywhere
+# in this game. Change a colour here and the sprite changes; add an entry and
+# a new bird exists.
+#
+# Deliberately plain designs: dot eyes, a small beak, no brows and no crests.
+# Expressive brows and head crests are what make a cartoon bird recognisable as
+# somebody else's cartoon bird.
+#
+# To author artwork instead of generating it, render a spec to PNGs and drop
+# them in assets/ — bird.py prefers files over generated sprites:
+#     python "../../visual ai game engine/tools/spritesmith.py" cast --out assets
+BIRD_SPECS = {
+    RUBY: CreatureSpec(
+        name=RUBY, body="round", colour=(226, 74, 58),
+        belly=(246, 214, 196), beak=(247, 181, 56), scale=1.0, tail=0.20,
+    ),
+    AMBER: CreatureSpec(
+        name=AMBER, body="wedge", colour=(240, 190, 52),
+        belly=(250, 228, 160), beak=(232, 128, 44), scale=0.94,
+        eye_size=0.085, tail=0.16,
+    ),
+    SLATE: CreatureSpec(
+        name=SLATE, body="round", colour=(74, 82, 96),
+        belly=(120, 130, 148), beak=(196, 168, 92), scale=1.06,
+        gloss=0.28, tail=0.18,
+    ),
+    AZURE: CreatureSpec(
+        name=AZURE, body="round", colour=(72, 148, 214),
+        belly=(198, 226, 246), beak=(240, 176, 72), scale=0.80,
+        eye_size=0.105, tail=0.24,
+    ),
+    IVORY: CreatureSpec(
+        name=IVORY, body="oval", colour=(238, 238, 232),
+        belly=(255, 255, 252), outline=(96, 96, 104),
+        beak=(244, 168, 60), scale=0.96, gloss=0.15, tail=0.20,
+    ),
+}
+
+TARGET_SPEC = CreatureSpec(
+    name=TARGET, body="round", colour=(86, 178, 96),
+    belly=(150, 214, 150), outline=(28, 44, 30),
+    beak_size=0.0, tail=0.0, eye_size=0.13, gloss=0.26, scale=1.0,
+)
 
 
 #  LIGHTING & SHADOW SETTINGS
