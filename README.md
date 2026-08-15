@@ -8,18 +8,18 @@ You play them with your hands and body in front of a webcam - no controller.
 
 | Game | Input | Entry point |
 | --- | --- | --- |
-| **AngryBirds** | Hand signs - close a fist to grab the bird, open your hand to fire | `AngryBirds/main.py` |
+| **Sling** | Hand signs - close a fist to grab the bird, open your hand to fire | `Sling/main.py` |
 | **flappy** | Finger tracking - raise and lower your index finger to fly | `flappy/tof_flappy.py` |
 | **punchy** | Time-of-Flight depth - punch toward the camera to hit targets | `punchy/tof_punch.py` |
 
 ### Controls
 
-AngryBirds reads hand signs rather than pinch gestures. Make a **fist** over a
+Sling reads hand signs rather than pinch gestures. Make a **fist** over a
 bird in the top carousel to grab it — aiming starts immediately — move the fist
 to pull the slingshot, then **open your hand** to fire. To swap birds, open your
 hand and lift it back into the carousel strip.
 
-Both AngryBirds and flappy share two stabilisation keys, because there are two
+Both Sling and flappy share two stabilisation keys, because there are two
 independent smoothing systems and they are worth feeling separately:
 
 | Key | Effect |
@@ -46,7 +46,7 @@ git clone https://github.com/Ashiqalink/visual-ai-games.git "visual ai games"
 cd "visual ai games"
 python -m venv .venv
 .venv\Scripts\activate          # Windows
-pip install -r AngryBirds/requirements.txt
+pip install -r Sling/requirements.txt
 ```
 
 If you keep the engine somewhere else, point at it with an environment
@@ -75,7 +75,7 @@ pip install -e "../visual ai game engine"
 ## Running
 
 ```bash
-python AngryBirds/main.py
+python Sling/main.py
 python flappy/tof_flappy.py
 python punchy/tof_punch.py
 ```
@@ -84,8 +84,8 @@ Each game needs a webcam. Press `q` to quit.
 
 ## Repo layout notes
 
-`AngryBirds/` was imported from
-[angry-birds-using-opencv](https://github.com/Ashiqalink/angry-birds-using-opencv)
+`Sling/` was imported from
+[sling](https://github.com/Ashiqalink/sling)
 with its full commit history preserved, so that repo remains its upstream.
 
 To pull later changes from upstream into this repo:
@@ -93,8 +93,8 @@ To pull later changes from upstream into this repo:
 ```bash
 git fetch old-repo main
 git merge -s ours --no-commit --allow-unrelated-histories FETCH_HEAD
-git read-tree --prefix=AngryBirds/ -u FETCH_HEAD
-git commit -m "sync AngryBirds from upstream"
+git read-tree --prefix=Sling/ -u FETCH_HEAD
+git commit -m "sync Sling from upstream"
 ```
 
-where `old-repo` is the remote pointing at `angry-birds-using-opencv.git`.
+where `old-repo` is the remote pointing at `sling.git`.
