@@ -195,6 +195,8 @@ def main():
         elif key == ord('r') and game_over:
             score = 0
             pipes = [Pipe(W + 200), Pipe(W + 600)]
+            bird_y = H // 2
+            target_y = float(H // 2)
             game_over = False
 
     pipeline.stop()
