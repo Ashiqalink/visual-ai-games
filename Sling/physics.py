@@ -12,7 +12,6 @@ from config import (
     DAMAGE_FACTOR, BLOCK_HEALTH,
     PINCH_THRESHOLD, THREE_FINGER_PINCH_RADIUS, INPUT_MOVEMENT_MAGNIFICATION,
     Z_CLICK_THRESHOLD_M, Z_CLICK_XY_MAX_PX,
-    Z_CLICK_THRESHOLD_M, Z_CLICK_XY_MAX_PX,
     BLOCK_COLL_Y_STACK, BLOCK_MATERIALS,
 )
 
@@ -22,8 +21,8 @@ from visual_ai import Vector2, intersect_circle_aabb
 # ── AABB collision ─────────────────────────────────────────────────────────────
 def bird_hits_block(bird, block) -> bool:
     """Axis-aligned bounding-box test: circle (bird) vs rectangle (block) using visual_ai math."""
-    bx, by, bw, bh = block.rect
-    return intersect_circle_aabb((bird.x, bird.y, bird.radius), (bx, by, bw, bh))
+    bw, bh = block.rect[2], block.rect[3]
+    return intersect_circle_aabb((bird.x, bird.y, bird.radius), (block.cx, block.cy, bw, bh))
 
 
 def bird_hits_ground(bird) -> bool:
