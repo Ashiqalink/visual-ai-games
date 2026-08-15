@@ -267,6 +267,13 @@ def main() -> int:
                             True, ACCENT)
         screen.blit(title, (16, 180))
 
+        # What to do with your hands. The spike has no goal to explain, but it
+        # still opens on a window that does nothing until a hand appears.
+        screen.blit(font_small.render(
+            "move your index finger — the bird follows   ·   "
+            "pinch thumb + index — it flashes and grows   ·   Q quits",
+            True, TEXT_DIM), (16, 204))
+
         state = "PINCH" if is_pinching else ("TRACKING" if hand_visible else "NO HAND")
         state_col = PINCH_COL if is_pinching else (
             ACCENT if hand_visible else TEXT_DIM)

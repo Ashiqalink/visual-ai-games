@@ -19,6 +19,7 @@ Fist / open hand, in three phases:
 
 Keyboard
 --------
+H        : how-to-play card (shown on open; any key dismisses it)
 Q / ESC  : quit
 R        : restart
 1 / 2 / 3: select level (Easy / Medium / Hard)
@@ -49,6 +50,7 @@ except ImportError:
 
 from visual_ai import VisionPipeline, CPP_ENGINE_AVAILABLE
 from game import Game
+import ui
 from config import (
     FRAME_W, FRAME_H, BG_COLOR,
     CAM_W, CAM_H, CAM_MARGIN, CAM_BORDER, CAM_BORDER_COLOR,
@@ -146,6 +148,10 @@ def main():
     # ToF stabilizer starts off; L toggles it, X cancels an in-progress run.
     tof_stab_on = False
 
+    # Sling opens on its how-to-play card. The pipeline runs behind it, so the
+    # camera has warmed up and the hand is tracked by the time play starts.
+    showing_help = True
+
     cam_frame = None          # raw BGR from pipeline (for the preview box only)
     gesture = {
         "hand_visible":        False,
@@ -199,42 +205,54 @@ def main():
 
         # ── Keyboard ──────────────────────────────────────────────────────
         key = cv2.waitKey(1) & 0xFF
-        if key in (ord('t'), ord('T')):
-            pipeline.tof_simulated = not getattr(pipeline, "tof_simulated", False)
-            print(f"[ToF Debugger] Simulated ToF Depth Stream: {pipeline.tof_simulated}")
-        if key in (ord('c'), ord('C')):
-            pipeline.disable_camera = not getattr(pipeline, "disable_camera", False)
-            print(f"[Camera Debugger] Camera Disabled: {pipeline.disable_camera}")
 
-        # Two independent stabilisation systems, two keys.
-        # K — One-Euro landmark smoothing (X/Y jitter vs responsiveness)
-        # L — ToF depth stabilizer (lid-shake calibration)
-        if key in (ord('k'), ord('K')):
-            on = pipeline.toggle_smoothing()
-            print(f"[Stabilisation] Landmark smoothing: {'ON' if on else 'OFF (raw positions)'}")
-        if key in (ord('l'), ord('L')):
-            tof_stab_on = not tof_stab_on
-            if tof_stab_on:
-                pipeline.begin_stabilization(3.0)
-                print("[Stabilisation] ToF stabilizer: calibrating — hold still")
-            else:
-                pipeline.disable_stabilization()
-                print("[Stabilisation] ToF stabilizer: OFF")
-        # The calibration overlay tells the player "Press X to cancel", but
-        # nothing was listening for it, so the overlay could not be dismissed.
-        if key in (ord('x'), ord('X')):
-            pipeline.cancel_stabilization()
-            tof_stab_on = False
+        if showing_help:
+            # The card swallows the frame. No key is dispatched — the keypress
+            # that dismisses it must not also switch level — and the gesture
+            # never reaches the state machine, so a fist held while reading
+            # cannot grab a bird before the player has read what a fist does.
+            if key != 255 and key not in (ord('q'), ord('Q'), 27):
+                showing_help = False
+            accumulator = 0.0        # do not bank physics steps for the wait
+        else:
+            if key in (ord('h'), ord('H')):
+                showing_help = True
+            if key in (ord('t'), ord('T')):
+                pipeline.tof_simulated = not getattr(pipeline, "tof_simulated", False)
+                print(f"[ToF Debugger] Simulated ToF Depth Stream: {pipeline.tof_simulated}")
+            if key in (ord('c'), ord('C')):
+                pipeline.disable_camera = not getattr(pipeline, "disable_camera", False)
+                print(f"[Camera Debugger] Camera Disabled: {pipeline.disable_camera}")
 
-        # ── Game logic (Input & State) ────────────────────────────────────
-        game.update_game_state(gesture, key)
-        if hasattr(pipeline, "set_movement_magnification"):
-            pipeline.set_movement_magnification(game._AIM_PULL_GAIN)
+            # Two independent stabilisation systems, two keys.
+            # K — One-Euro landmark smoothing (X/Y jitter vs responsiveness)
+            # L — ToF depth stabilizer (lid-shake calibration)
+            if key in (ord('k'), ord('K')):
+                on = pipeline.toggle_smoothing()
+                print(f"[Stabilisation] Landmark smoothing: {'ON' if on else 'OFF (raw positions)'}")
+            if key in (ord('l'), ord('L')):
+                tof_stab_on = not tof_stab_on
+                if tof_stab_on:
+                    pipeline.begin_stabilization(3.0)
+                    print("[Stabilisation] ToF stabilizer: calibrating — hold still")
+                else:
+                    pipeline.disable_stabilization()
+                    print("[Stabilisation] ToF stabilizer: OFF")
+            # The calibration overlay tells the player "Press X to cancel", but
+            # nothing was listening for it, so the overlay could not be dismissed.
+            if key in (ord('x'), ord('X')):
+                pipeline.cancel_stabilization()
+                tof_stab_on = False
 
-        # ── Fixed-Step Physics ────────────────────────────────────────────
-        while accumulator >= FIXED_DT:
-            game.update_physics()
-            accumulator -= FIXED_DT
+            # ── Game logic (Input & State) ────────────────────────────────
+            game.update_game_state(gesture, key)
+            if hasattr(pipeline, "set_movement_magnification"):
+                pipeline.set_movement_magnification(game._AIM_PULL_GAIN)
+
+            # ── Fixed-Step Physics ────────────────────────────────────────
+            while accumulator >= FIXED_DT:
+                game.update_physics()
+                accumulator -= FIXED_DT
 
         # ── Build solid game canvas (no camera bleed-through) ─────────────
         canvas[:] = BG_COLOR            # deep navy-black background
@@ -263,6 +281,10 @@ def main():
 
         # ── Camera preview — top-right corner ─────────────────────────────
         _paste_cam(canvas, cam_frame)
+
+        # ── How to play — over everything, including the camera preview ───
+        if showing_help:
+            ui.draw_instructions_card(canvas)
 
         cv2.imshow("Sling", canvas)
 

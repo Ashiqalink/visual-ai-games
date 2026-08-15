@@ -53,6 +53,21 @@ class SignDuel(LabGame):
     width, height = 960, 720
     wants_max_hands = 1
 
+    goal = ("Make the hand sign named in the middle of the screen before the "
+            "bar runs out. Every round you get right, the next one is faster.")
+    controls = (
+        ("FIST", "curl all five fingers"),
+        ("OPEN PALM", "all five fingers spread"),
+        ("POINT", "index finger only"),
+        ("PEACE", "index and middle finger"),
+        ("Hold it steady",
+         f"the sign has to survive {HOLD_FRAMES} frames to score — flicking "
+         f"through it does not count"),
+        ("Watch the pips",
+         "T I M R P light up per finger, so a misread sign shows you which "
+         "finger the tracker disagrees about"),
+    )
+
     def __init__(self):
         self.round = 0
         self.score = 0

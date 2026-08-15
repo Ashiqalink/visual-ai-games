@@ -54,6 +54,21 @@ class DepthPong(LabGame):
     wants_depth_grid = True
     wants_max_hands = 2
 
+    goal = ("Your whole silhouette is the paddle. Keep the ball off the bottom "
+            "of the screen — every bounce off you is a rally.")
+    controls = (
+        ("Lean toward the camera",
+         "anything nearer than the depth threshold turns green and becomes "
+         "solid — that green shape is your paddle"),
+        ("Move under the ball",
+         "it bounces off the slope of the shape it hits, so an angled hand "
+         "sends it sideways and a flat one sends it straight up"),
+        ("Use both hands",
+         "two hands give you a wider paddle than one"),
+        ("Let it fall off the bottom",
+         "counts as a drop and the ball respawns at the top"),
+    )
+
     def add_args(self, parser):
         parser.add_argument("--grid", metavar="WxH", default=None,
                             help="depth grid resolution, e.g. 16x12, 32x24, 64x48, 160x120")

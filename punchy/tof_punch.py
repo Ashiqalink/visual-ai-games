@@ -16,9 +16,34 @@ sys.path.insert(0, os.path.join(BASE_DIR, '..'))
 from engine_bootstrap import ensure_engine
 ensure_engine()
 
+from instructions import draw_card
 from visual_ai import VisionPipeline
 
 W, H = 800, 600
+
+TITLE = "ToF Punch — hit it with depth"
+GOAL = ("Punch toward the camera to smash the target before the red ring "
+        "around it runs out.")
+CONTROLS = (
+    ("Hold one hand up",
+     "the meter on the right is how far your hand is from the camera — that "
+     "distance is the whole control"),
+    ("Punch forward",
+     "a quick move toward the camera lands the hit; where your hand sits on "
+     "screen makes no difference, so aim is not part of this"),
+    ("Pull back between punches",
+     "a hit is a sudden drop in depth against the last few frames, so a hand "
+     "parked out in front cannot punch again until it comes back"),
+    ("Let the ring empty",
+     "the target is missed and a fresh one spawns"),
+)
+KEYS = (
+    ("H", "show this card again"),
+    ("S", "calibrate the depth stabilizer, 3 s — hold still"),
+    ("Shift + S", "longer 5 s calibration"),
+    ("X", "turn the stabilizer off"),
+    ("Q / ESC", "quit"),
+)
 
 def draw_text(img, text, x, y, size=1.0, color=(255, 255, 255), thickness=2):
     cv2.putText(img, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, size, (0, 0, 0), thickness + 2)
@@ -118,6 +143,11 @@ def main():
         bg_base[y, :] = (c + 30, c + 10, c)  # Deep blue/purple gradient
 
     latest_data = None
+
+    # Shown before the first target is live. The pipeline runs behind the card,
+    # so depth history has already filled by the time the player throws a punch.
+    showing_help = True
+
     while True:
         try:
             new_data = ai_queue.get_nowait()
@@ -142,7 +172,7 @@ def main():
 
         # Detect Punch
         punch_detected = False
-        if len(z_history) >= 3 and punch_cooldown == 0:
+        if len(z_history) >= 3 and punch_cooldown == 0 and not showing_help:
             # Baseline is the furthest Z in recent history (to account for noise)
             z_baseline = max(z_history[:-1])
             current_z = z_history[-1]
@@ -173,10 +203,14 @@ def main():
                 target = Target()  # Spawn new target immediately
 
         if target is not None:
-            target.timer -= 1
-            if target.timer <= 0:
-                misses += 1
-                target = Target()
+            # The target still draws behind the card — a live screen reads as a
+            # game waiting to start, a frozen blank one reads as a hang — but it
+            # does not age, so nobody is charged a miss for reading the rules.
+            if not showing_help:
+                target.timer -= 1
+                if target.timer <= 0:
+                    misses += 1
+                    target = Target()
             target.draw(frame)
 
         # Draw particles
@@ -206,7 +240,7 @@ def main():
             cv2.rectangle(frame, (meter_x, meter_y + meter_h - fill_h), (meter_x + meter_w, meter_y + meter_h), (0, 200, 255), -1)
             
         draw_text(frame, f"Z: {current_z:.2f}m", W - 120, H - 20, 0.7, (200, 255, 255))
-        draw_text(frame, "PUNCH FORWARD (decrease depth)!", 30, H - 30, 0.8, (200, 200, 200))
+        draw_text(frame, "PUNCH FORWARD (decrease depth)!  |  H: how to play", 30, H - 30, 0.7, (200, 200, 200))
         
         if punch_cooldown > 0:
             draw_text(frame, "BAM!", W // 2 - 80, H // 2 - 120, 3.0, (0, 150, 255), 5)
@@ -241,11 +275,21 @@ def main():
         cv2.circle(frame, (bx, by + 5), 8, badge_color, -1)
         draw_text(frame, badge_text, bx + 20, by + 10, 0.6, badge_color, 2)
 
+        if showing_help:
+            draw_card(frame, TITLE, GOAL, CONTROLS, KEYS)
+
         cv2.imshow("ToF Punch", frame)
 
         key = cv2.waitKey(16) & 0xFF
         if key in (27, ord('q')):
             break
+        elif showing_help:
+            # Any key starts, and nothing else is dispatched this frame — the
+            # key that dismisses the card should not also start a calibration.
+            if key != 255:
+                showing_help = False
+        elif key in (ord('h'), ord('H')):
+            showing_help = True
         elif key == ord('s'):                          # 3-second calibration
             pipeline.begin_stabilization(duration=3.0)
         elif key == ord('S'):                          # 5-second calibration

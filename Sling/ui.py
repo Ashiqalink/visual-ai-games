@@ -12,7 +12,12 @@ import time
 
 # Ensure visual ai game engine imports are accessible
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine', 'src'))
+# ...and the games root, for the shared how-to-play card. main.py already puts
+# it on the path; doing it here too means ui.py imports standalone as well.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from visual_ai import Renderer3D, Mesh3D, Transform3D, Camera3D, Material, predict_projectile_trajectory
+
+from instructions import draw_card
 
 from bird import Bird
 from config import (
@@ -404,8 +409,56 @@ def draw_hud(
     _text(frame, hint, (w - 460, h - 20), scale=0.55, col=(200, 200, 200))
 
     # Level-switch hint
-    _text(frame, "1/2/3: Level  |  +/-: Magnification  |  R: Restart  |  K: Smoothing  |  L: ToF Stab",
-          (w - 620, h - 44), scale=0.45, col=(160, 160, 160))
+    _text(frame, "H: How to play  |  1/2/3: Level  |  +/-: Magnification  |  R: Restart  |  K: Smoothing  |  L: ToF Stab",
+          (w - 700, h - 44), scale=0.45, col=(160, 160, 160))
+
+
+# ── How to play ───────────────────────────────────────────────────────────────
+#
+# The per-phase hints in draw_hud say what to do *now*; this says what the game
+# is. Sling's control is three phases deep — grab, lock an origin, pull — and
+# none of it is guessable from a screen showing a bird on a fork, so the game
+# opens on the card and `H` brings it back.
+
+INSTRUCTIONS_TITLE = "Sling — fist to grab, open hand to fire"
+INSTRUCTIONS_GOAL = (
+    "Sling birds at the blocks to bring the structure down. You get the birds "
+    "on the shelf and no more, so a wasted shot is a wasted bird."
+)
+INSTRUCTIONS_CONTROLS = (
+    ("Show one hand",
+     "the ring on screen follows your index fingertip, and the panel on the "
+     "right says which sign the tracker thinks you are making"),
+    ("1 · Close a FIST",
+     "over the carousel of birds at the top to pick one up"),
+    ("2 · Keep the fist",
+     "and bring your hand wherever you want to shoot from — nothing is being "
+     "pulled yet"),
+    ("Hold still a moment",
+     "the ring on your hand fills; when it locks, that spot is the aim origin"),
+    ("3 · Move the fist",
+     "to draw the band back — the dotted arc is where the bird will go, and "
+     "pulling further is a harder shot"),
+    ("OPEN your hand",
+     "to fire. Opening it after only a short pull puts the bird back on the "
+     "shelf instead of wasting it"),
+)
+INSTRUCTIONS_KEYS = (
+    ("H", "show this card again"),
+    ("1 / 2 / 3", "level: Easy, Medium, Hard"),
+    ("R", "restart the level"),
+    ("+ / -", "aim magnification — how far the band pulls per cm of hand"),
+    ("K", "landmark smoothing on / off"),
+    ("L", "ToF depth stabilizer on / off (hold still 3 s)"),
+    ("X", "cancel a calibration"),
+    ("Q / ESC", "quit"),
+)
+
+
+def draw_instructions_card(frame: np.ndarray):
+    """The how-to-play card, drawn over the live game."""
+    draw_card(frame, INSTRUCTIONS_TITLE, INSTRUCTIONS_GOAL,
+              INSTRUCTIONS_CONTROLS, INSTRUCTIONS_KEYS)
 
 
 def draw_done_overlay(frame: np.ndarray, score: int = 0, won: bool = False, stars: int = 0, bonus: int = 0, rot_angle_3d: float = 0.0):

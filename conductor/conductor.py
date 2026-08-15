@@ -78,6 +78,20 @@ class Conductor(LabGame):
     width, height = 960, 720
     wants_max_hands = 1
 
+    goal = ("Conduct the metronome at the top of the screen. Every time you "
+            "change direction is a beat — land the turn on the pulse.")
+    controls = (
+        ("Point one finger",
+         "the ring is your baton; the arrow is the direction it is moving"),
+        ("Sweep left and right",
+         "a beat fires the instant your horizontal direction flips"),
+        ("Swing with intent",
+         f"a turn only counts above {MIN_SPEED:.0f} px/s — a drifting hand "
+         f"reverses on noise, not on purpose"),
+        ("Turn on the pulse",
+         "you are graded PERFECT / GOOD / LATE against the nearest beat"),
+    )
+
     def add_args(self, parser):
         parser.add_argument("--beta", type=float, default=None,
                             help="override the One-Euro speed coupling")

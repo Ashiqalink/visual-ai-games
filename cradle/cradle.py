@@ -67,6 +67,22 @@ class Cradle(LabGame):
     width, height = 1120, 760
     wants_max_hands = 2
 
+    goal = ("A string runs between your two hands. Sweep it through the rings "
+            "before they fade out.")
+    controls = (
+        ("Show both hands",
+         "the string is the line between them — with one hand there is no "
+         "string and nothing to score with"),
+        ("Keep them apart",
+         f"closer than {MIN_SPAN:.0f} px the string goes slack and sags, and a "
+         f"slack string passes through rings without clearing them"),
+        ("Move the string over a ring",
+         "the line has to cross the ring's inner circle, not just touch the rim"),
+        ("Cross your hands freely",
+         "the string is what matters, so it makes no difference which hand is "
+         "on which side"),
+    )
+
     def __init__(self):
         self.rings: list[Ring] = []
         self.spawn_timer = 0.0

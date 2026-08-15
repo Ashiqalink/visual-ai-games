@@ -8,6 +8,11 @@ two modes off the same code:
     python <game>.py                 windowed, real camera, a person plays it
     python <game>.py --headless 600  no window, scripted input, prints JSON
 
+A windowed run opens on a how-to-play card built from the game's own `goal`,
+`controls` and `keys` — these are gesture games, and a player who does not know
+which shape their hand should be in has no way to discover it. Any key starts,
+`H` brings it back, `--no-instructions` skips it. Headless runs never show it.
+
 The headless mode is the point. It drives the game from `ScriptedPipeline`,
 which speaks the same queue contract as `VisionPipeline` but emits payloads from
 a deterministic motion script, so a run is repeatable and a regression shows up
@@ -43,6 +48,10 @@ import cv2                                   # noqa: E402
 import numpy as np                           # noqa: E402
 
 from visual_ai import VisionPipeline         # noqa: E402
+
+# The how-to-play card lives outside the harness so that Sling, flappy and
+# punchy — which are no part of it — can show the same one.
+from instructions import draw_card, draw_hint, wrap   # noqa: E402,F401
 
 
 # ── Drawing ───────────────────────────────────────────────────────────────────
@@ -88,6 +97,20 @@ def vgradient(w, h, top=(38, 20, 16), bottom=(10, 8, 14)):
     return canvas
 
 
+# ── Instructions card ─────────────────────────────────────────────────────────
+
+#: Keys the driver handles for every game, so no game has to list them itself.
+DRIVER_KEYS = (
+    ("H", "show this card again"),
+    ("K", "landmark smoothing on / off"),
+    ("L", "calibrate ToF depth (hold still 3 s)"),
+    ("X", "cancel a calibration"),
+    ("Q / ESC", "quit"),
+)
+
+
+
+
 # ── Frame timing ──────────────────────────────────────────────────────────────
 
 class FrameClock:
@@ -104,11 +127,17 @@ class FrameClock:
         self._last = time.perf_counter()
         self.dt = 1.0 / 60.0
 
-    def tick(self) -> float:
+    def tick(self, record: bool = True) -> float:
+        """
+        Advance the clock. `record=False` still advances it but keeps the frame
+        out of the summary — frames spent behind the instructions card are not
+        frames of gameplay, and letting them into the percentiles would make the
+        reported p95 a measure of how long the player read for.
+        """
         now = time.perf_counter()
         self.dt = min(0.25, now - self._last)   # cap so a stall cannot teleport physics
         self._last = now
-        if len(self.samples) < self.keep:
+        if record and len(self.samples) < self.keep:
             self.samples.append(self.dt)
         return self.dt
 
@@ -398,6 +427,14 @@ class LabGame:
 
     title = "Lab Game"
     width, height = 960, 720
+    #: One sentence: what the player is trying to do. Shown on the card the game
+    #: opens with, so every game explains itself without a README.
+    goal = ""
+    #: (input, what it does) pairs — the actual play instructions.
+    controls: tuple[tuple[str, str], ...] = ()
+    #: Game-specific keys. The driver's own keys (H/K/L/X/Q) are appended for
+    #: every game, so do not repeat them here.
+    keys: tuple[tuple[str, str], ...] = ()
     #: What the pipeline needs turned on for this game.
     wants_depth_grid = False
     wants_max_hands = 2
@@ -449,6 +486,8 @@ def common_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--height", type=int, default=None)
     parser.add_argument("--no-camera", action="store_true",
                         help="windowed, but driven by the scripted input")
+    parser.add_argument("--no-instructions", action="store_true",
+                        help="skip the how-to-play card the game opens with")
     return parser
 
 
@@ -567,26 +606,45 @@ def _run_windowed(game: LabGame, args) -> int:
     dropped_total = 0
     running = True
 
+    # The card is up before the first frame of play. The pipeline runs behind it
+    # regardless, so the camera has warmed up and the hand is already tracked by
+    # the time the player dismisses it.
+    showing_help = not args.no_instructions
+
     try:
         while running:
             if isinstance(pipeline, ScriptedPipeline):
                 pipeline.step()
             payload, dropped = drain(q)
             dropped_total += dropped
-            dt = clock.tick()
+            dt = clock.tick(record=not showing_help)
 
-            if payload is not None:
+            if payload is not None and not showing_help:
                 game.update(payload, dt)
             canvas[:] = 0
             game.render(canvas)
 
             draw_text(canvas, f"{clock.fps:5.1f} fps", game.width - 150, 30,
                       0.6, (150, 200, 255), 1)
+            if showing_help:
+                draw_card(canvas, game.title, game.goal, game.controls,
+                          tuple(game.keys) + DRIVER_KEYS)
+            else:
+                draw_hint(canvas)
             cv2.imshow(window, canvas)
 
             key = cv2.waitKey(1) & 0xFF
             if key in (27, ord('q')):
                 running = False
+            elif showing_help:
+                # Any key starts the game. Reading the card is not gameplay, so
+                # the clock is re-based before the first live frame rather than
+                # handing the game a dt measured from when the card went up.
+                if key != 255:
+                    showing_help = False
+                    clock.tick(record=False)
+            elif key == ord('h'):
+                showing_help = True
             elif key == ord('k'):
                 pipeline.toggle_smoothing()
             elif key == ord('l'):

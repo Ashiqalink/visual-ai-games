@@ -81,6 +81,22 @@ class DepthLanes(LabGame):
     width, height = 960, 720
     wants_max_hands = 1
 
+    goal = ("Three lanes are three distances from the camera. Notes slide left "
+            "toward the white line — be in a note's lane when it arrives.")
+    controls = (
+        ("Hold one hand up",
+         "how far it is from the camera picks the lane, not where it is"),
+        ("Hand close to the camera",
+         f"NEAR, the top lane (under {BAND_EDGES[0]:.2f} m)"),
+        ("Arm half extended",
+         f"MID, the middle lane ({BAND_EDGES[0]:.2f}–{BAND_EDGES[1]:.2f} m)"),
+        ("Arm out at full stretch",
+         f"FAR, the bottom lane (past {BAND_EDGES[1]:.2f} m)"),
+        ("Move on the beat",
+         f"the lit lane is where you are; a note counts within "
+         f"{int(HIT_WINDOW * 1000)} ms of the line"),
+    )
+
     def add_args(self, parser):
         parser.add_argument("--stabilize", action="store_true",
                             help="calibrate the ToF stabilizer at frame 20, while "

@@ -14,6 +14,12 @@ You play them with your hands and body in front of a webcam - no controller.
 
 ### Controls
 
+**Every game opens on a how-to-play card** — what you are trying to do, what
+your hands do, and which keys exist. Any key starts the game, and `H` brings the
+card back mid-game. Nothing moves and no gesture is read while it is up, so a
+fist held while reading cannot grab a bird. The lab games take
+`--no-instructions` to skip it.
+
 Sling reads hand signs rather than pinch gestures. Make a **fist** over a
 bird in the top carousel to grab it — aiming starts immediately — move the fist
 to pull the slingshot, then **open your hand** to fire. To swap birds, open your
@@ -24,6 +30,7 @@ independent smoothing systems and they are worth feeling separately:
 
 | Key | Effect |
 | --- | --- |
+| `H` | Show the how-to-play card again. |
 | `K` | Toggle One-Euro landmark smoothing. Off = raw positions: maximally responsive, visibly jittery at rest. |
 | `L` | Toggle the ToF depth stabilizer, which runs a 3-second hold-still calibration. |
 | `X` | Cancel a calibration already in progress. |

@@ -73,6 +73,19 @@ class DuckHunt(LabGame):
     width, height = 960, 720
     wants_max_hands = 1
 
+    goal = ("Ducks fly straight at your face. Swat them with your hand before "
+            "they get there — five hits on your face and the round resets.")
+    controls = (
+        ("Sit in view of the camera",
+         "the blue head marked YOU is your own face, tracked live"),
+        ("Raise one hand",
+         "the green circle follows your index fingertip"),
+        ("Put the circle on a duck",
+         "swats it — +1 score, no aiming or clicking needed"),
+        ("Let one reach your face",
+         "costs a life; at zero the score and the flock reset"),
+    )
+
     def __init__(self):
         self.ducks: list[Duck] = []
         self.score = 0

@@ -31,6 +31,20 @@ play labtests --variants        # the whole headless suite
 | `conductor` | One-Euro at a fast reversal | filter lag in ms, smoothed vs raw beat detection |
 | `depthpong` | the whole `depth_grid` | payload bytes/frame, mask build cost |
 
+## How to play any of them
+
+Each game opens on a card built from its own `goal`, `controls` and `keys` — a
+gesture game gives no hint that the hand should be a fist rather than a point,
+or that depth matters and position does not, so the game has to say so. Any key
+starts, `H` brings the card back, `--no-instructions` skips it. Frames spent
+behind the card are kept out of the timing summary and the game does not update,
+so reading the rules costs neither a life nor a percentile. Headless runs never
+show it.
+
+The card itself is `instructions.py` at the repo root rather than part of this
+harness, because Sling, flappy and punchy show the same one and are no part of
+the harness.
+
 ## Headless mode
 
 `--headless N` runs N frames with no window and no camera, driving the game from

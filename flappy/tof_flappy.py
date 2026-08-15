@@ -15,9 +15,35 @@ sys.path.insert(0, os.path.join(BASE_DIR, '..'))
 from engine_bootstrap import ensure_engine
 ensure_engine()
 
+from instructions import draw_card
 from visual_ai import VisionPipeline
 
 W, H = 800, 600
+
+TITLE = "ToF Flappy — fly with your fingertip"
+GOAL = ("Fly the bird through the gaps in the pipes. Hitting a pipe, the "
+        "ceiling or the floor ends the run.")
+CONTROLS = (
+    ("Hold up one hand",
+     "the bird follows the height of your index fingertip — nothing else "
+     "on your hand matters"),
+    ("Raise your finger", "the bird climbs"),
+    ("Lower your finger", "the bird dives"),
+    ("Stay in the middle band",
+     "only the middle stretch of the camera frame is mapped to the screen, "
+     "so you never have to reach to the very edge"),
+    ("Lose tracking",
+     "the bird drifts back to the centre instead of dropping — a brief "
+     "dropout is survivable"),
+)
+KEYS = (
+    ("R", "restart after a crash"),
+    ("H", "show this card again"),
+    ("K", "landmark smoothing on / off"),
+    ("L", "ToF depth stabilizer on / off (hold still 3 s)"),
+    ("X", "cancel a calibration"),
+    ("Q / ESC", "quit"),
+)
 
 # Fingertip control band. Only the middle stretch of the camera frame is mapped
 # to the full screen height: the very top and bottom of frame are awkward to
@@ -98,6 +124,11 @@ def main():
     hand_visible = False
     tof_stab_on = False
 
+    # The card is up before the first pipe moves. The pipeline keeps running
+    # behind it, so the camera has warmed up and the hand is already tracked by
+    # the time the player starts.
+    showing_help = True
+
     while True:
         try:
             latest = ai_queue.get_nowait()
@@ -125,12 +156,13 @@ def main():
                 target_y = target_y * 0.9 + (H / 2.0) * 0.1
 
         # Smooth bird movement towards target
-        bird_y = bird_y * (1.0 - BIRD_FOLLOW) + target_y * BIRD_FOLLOW
+        if not showing_help:
+            bird_y = bird_y * (1.0 - BIRD_FOLLOW) + target_y * BIRD_FOLLOW
 
         frame = np.zeros((H, W, 3), dtype=np.uint8)
         frame[:] = (40, 30, 20) # Dark background
 
-        if not game_over:
+        if not game_over and not showing_help:
             # Update pipes
             for p in pipes:
                 p.update(5.0)
@@ -164,8 +196,8 @@ def main():
         smoothing_on = latest.get("smoothing_enabled", True) if latest else True
         draw_text(frame, f"Smoothing: {'ON' if smoothing_on else 'OFF'}", 20, 80, 0.7,
                   (0, 255, 0) if smoothing_on else (0, 180, 255))
-        draw_text(frame, "Raise/lower your index finger to fly  |  K: smoothing  L: ToF stab",
-                  20, H - 20, 0.6, (150, 150, 150))
+        draw_text(frame, "Raise/lower your index finger to fly  |  H: how to play  |  K: smoothing  L: ToF stab",
+                  20, H - 20, 0.5, (150, 150, 150))
 
         if game_over:
             draw_text(frame, "GAME OVER", W//2 - 150, H//2, 2.0, (0, 0, 255), 3)
@@ -173,11 +205,21 @@ def main():
 
         draw_tracking_status(frame, hand_visible, W)
 
+        if showing_help:
+            draw_card(frame, TITLE, GOAL, CONTROLS, KEYS)
+
         cv2.imshow("ToF Flappy", frame)
 
         key = cv2.waitKey(16) & 0xFF
         if key in (27, ord('q')):
             break
+        elif showing_help:
+            # Any key starts. Nothing else is dispatched this frame — the key
+            # that dismisses the card should not also toggle a filter.
+            if key != 255:
+                showing_help = False
+        elif key in (ord('h'), ord('H')):
+            showing_help = True
         elif key in (ord('k'), ord('K')):
             on = pipeline.toggle_smoothing()
             print(f"[Stabilisation] Landmark smoothing: {'ON' if on else 'OFF (raw positions)'}")

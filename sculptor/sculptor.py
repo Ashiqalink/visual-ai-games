@@ -77,6 +77,23 @@ class Sculptor(LabGame):
     width, height = 1280, 800
     wants_max_hands = 1
 
+    goal = ("Shape the solid on the turntable with one hand. There is no score "
+            "and nothing to lose — it is here to hold the 3D renderer flat out.")
+    controls = (
+        ("Move your hand",
+         "left/right spins the turntable, up/down tilts it"),
+        ("Open and close your grip",
+         "an open hand grows the model, a fist shrinks it"),
+        ("Push toward the camera",
+         "extrudes the model along its depth axis; pull back to flatten it"),
+        ("Take your hand away",
+         "the model keeps turning on its own"),
+    )
+    keys = (
+        ("SPACE", "next mesh"),
+        ("1 - 8", "pick a mesh directly"),
+    )
+
     def add_args(self, parser):
         parser.add_argument("--soak", metavar="MESH",
                             help=f"hold one mesh for the whole run ({', '.join(MESHES)})")
