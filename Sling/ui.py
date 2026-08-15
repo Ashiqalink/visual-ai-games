@@ -8,9 +8,10 @@ import numpy as np
 import math
 import sys
 import os
+import time
 
 # Ensure visual ai game engine imports are accessible
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine', 'src'))
 from visual_ai import Renderer3D, Mesh3D, Transform3D, Camera3D, Material, predict_projectile_trajectory
 
 from bird import Bird
@@ -25,8 +26,18 @@ from config import (
     OVERLAY_ALPHA,
     CAROUSEL_Y,
     CAROUSEL_SPACING,
-    CAROUSEL_PANEL_H
+    CAROUSEL_PANEL_H,
+    # Pinch and fire used to be drawn on the canvas by main.py. They are panel
+    # rows now, and keep their original colours so the meaning carries over.
+    CURSOR_PINCH_COL,
+    CURSOR_FIRE_COL,
 )
+
+#: The engine sets ``click_just_fired`` for exactly one frame. At 60fps that is
+#: 16ms of lit text — too short to read, and the on-canvas "FIRE!" flash that
+#: used to cover for it is gone. Latch the panel row instead.
+_FIRE_FLASH_SECONDS = 0.6
+_fire_flash_until = 0.0
 
 # Global 3D Renderer instance for UI showcase
 _ui_cam3d = Camera3D(fov=60.0, position=(0.0, 0.0, 500.0), screen_width=1280.0, screen_height=720.0)
@@ -120,9 +131,10 @@ def draw_carousel(frame: np.ndarray, bird_types: list, selected_idx: int, rot_an
         tmp = Bird(kind, bx, cy)
         tmp.draw(frame, scale=scale)
 
-        # Label
+        # Label. Kinds are lowercase because they double as asset filenames;
+        # title-case them for display.
         label_col = (0, 255, 200) if is_sel else (160, 160, 160)
-        _text(frame, kind, (bx - 20, cy + int(RADII[kind]*scale) + 20),
+        _text(frame, kind.title(), (bx - 20, cy + int(RADII[kind]*scale) + 20),
               scale=0.55 if is_sel else 0.45, col=label_col)
 
     # Instruction
@@ -154,6 +166,51 @@ def draw_trajectory(frame: np.ndarray,
         cv2.circle(frame, (int(x), int(y)), r_dot, col, -1)
 
 
+def draw_settle_ring(frame: np.ndarray,
+                     x: float, y: float,
+                     progress: float,
+                     radius: int = 22,
+                     timeout_progress: float = 0.0):
+    """
+    Feedback for the READY settle phase, drawn on the hand.
+
+    The player has the bird but no aim origin yet, and nothing else on screen
+    says so — the bird sits on the fork exactly as it does when idle. This ring
+    is the whole affordance: the dashed circle is the stillness tolerance, the
+    arc filling clockwise is how close the anchor is to locking, and the thin
+    outer arc is the timeout that locks it regardless.
+    """
+    cx, cy = int(x), int(y)
+    progress = max(0.0, min(1.0, progress))
+
+    # Tolerance circle — the box you have to stay inside, drawn as dashes so it
+    # reads as a boundary rather than as another progress indicator.
+    for a in range(0, 360, 24):
+        p1 = (int(cx + radius * math.cos(math.radians(a))),
+              int(cy + radius * math.sin(math.radians(a))))
+        p2 = (int(cx + radius * math.cos(math.radians(a + 12))),
+              int(cy + radius * math.sin(math.radians(a + 12))))
+        cv2.line(frame, p1, p2, (120, 130, 145), 1, cv2.LINE_AA)
+
+    # Settle arc — green as it approaches lock.
+    arc_r = radius + 10
+    col = (int(60 + 40 * progress), int(140 + 115 * progress), int(255 - 135 * progress))
+    if progress > 0.0:
+        cv2.ellipse(frame, (cx, cy), (arc_r, arc_r), -90, 0, int(360 * progress),
+                    col, 3, cv2.LINE_AA)
+    cv2.circle(frame, (cx, cy), arc_r, (45, 50, 62), 1, cv2.LINE_AA)
+
+    # Auto-lock timeout — outer, dimmer, so it never competes with the settle arc.
+    if timeout_progress > 0.02:
+        cv2.ellipse(frame, (cx, cy), (arc_r + 7, arc_r + 7), -90,
+                    0, int(360 * min(1.0, timeout_progress)),
+                    (90, 120, 160), 1, cv2.LINE_AA)
+
+    label = "LOCKING..." if progress > 0.5 else "HOLD STILL TO AIM"
+    _text(frame, label, (cx - 70, cy - arc_r - 14), scale=0.5,
+          col=col, thickness=2)
+
+
 # Sign -> (label, BGR colour). Kept here so the overlay and the HUD panel
 # below cannot drift apart on naming or colour.
 SIGN_STYLE = {
@@ -167,20 +224,22 @@ SIGN_STYLE = {
 
 def draw_hand_sign_overlay(frame: np.ndarray, gesture: dict):
     """
-    Draws the recognised hand sign as a badge on the hand, plus a fingertip
-    marker per tracked finger. Replaces the old 3-finger lock animation, which
-    visualised a timed lock phase that the fist/open scheme no longer has.
+    Draws one small fingertip marker per tracked finger, and nothing else.
+
+    The badge disc and the sign label that used to sit on the pinch midpoint
+    are gone: they covered the bird, the band and the trajectory preview at the
+    one moment the player needs to see all three. Everything they said — the
+    sign, the pinch, the fire — is now read off the HAND SIGN CONTROL panel in
+    ``draw_hud``, which lives outside the play area. The markers stay because
+    they are the only on-canvas confirmation that tracking is following the
+    right fingers; their colour still encodes the current sign.
     """
     if not gesture or not gesture.get("hand_visible", False):
         return
 
     sign = gesture.get("hand_sign", "unknown")
-    label, col = SIGN_STYLE.get(sign, SIGN_STYLE["unknown"])
+    _, col = SIGN_STYLE.get(sign, SIGN_STYLE["unknown"])
 
-    anchor = gesture.get("pinch_pos", (0, 0))
-    ax, ay = int(anchor[0]), int(anchor[1])
-
-    # Fingertip markers — small and unobtrusive; the badge carries the meaning.
     for pos in (gesture.get("thumb_pos"), gesture.get("index_pos"), gesture.get("middle_pos")):
         if not pos:
             continue
@@ -189,23 +248,6 @@ def draw_hand_sign_overlay(frame: np.ndarray, gesture: dict):
             continue
         cv2.circle(frame, (x, y), 5, col, -1)
         cv2.circle(frame, (x, y), 8, (30, 30, 40), 1)
-
-    if ax <= 0 or ay <= 0:
-        return
-
-    # Sign badge: solid while gripping, hollow ring once released, so the
-    # grab/fire transition is readable at a glance mid-shot.
-    if sign == "fist":
-        cv2.circle(frame, (ax, ay), 26, col, -1)
-        cv2.circle(frame, (ax, ay), 30, (255, 255, 255), 2)
-    elif sign == "open_palm":
-        cv2.circle(frame, (ax, ay), 34, col, 3)
-        cv2.circle(frame, (ax, ay), 44, col, 1)
-    else:
-        cv2.circle(frame, (ax, ay), 20, col, 2)
-
-    (tw, _), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
-    _text(frame, label, (ax - tw // 2, ay - 42), scale=0.6, col=col, thickness=2)
 
 
 def draw_hud(
@@ -228,7 +270,7 @@ def draw_hud(
     """Render full head-up display overlay (modifies frame in-place)."""
     h, w = frame.shape[:2]
 
-    # Draw hand-sign badge directly on canvas if gesture is provided
+    # Fingertip markers on the canvas — the only on-hand drawing left
     if gesture:
         draw_hand_sign_overlay(frame, gesture)
 
@@ -244,20 +286,32 @@ def draw_hud(
         tmp = Bird(kind, 100 + i * 55, h - 30)
         tmp.draw(frame, scale=0.7)
 
-    # ── Hand Sign & Gesture Debug Panel — top-right (below camera box)
-    box_w, box_h = 250, 145
+    # ── Hand Sign & Gesture Panel — top-right (below camera box) ──────────
+    #
+    # This panel is now the only place the input state is legible: the cursor
+    # on the canvas is a bare ring, so anything the player needs to reason
+    # about — tracking, sign, pinch, fire, phase — has to be readable here.
+    box_w, box_h = 250, 232
     box_x, box_y = w - box_w - 12, 187   # top-right, directly below camera preview
 
     draw_rect_alpha(frame, box_x, box_y, box_x + box_w, box_y + box_h, (15, 18, 28), 0.75)
     cv2.rectangle(frame, (box_x, box_y), (box_x + box_w, box_y + box_h), (60, 90, 130), 1)
 
-    # Title
-    _text(frame, "HAND SIGN CONTROL", (box_x + 8, box_y + 18), scale=0.48, col=(0, 220, 255), thickness=2)
-
+    hand_visible = gesture.get("hand_visible", False) if gesture else False
     sign = gesture.get("hand_sign", "unknown") if gesture else "unknown"
     fingers_ext = gesture.get("fingers_extended", (False,) * 5) if gesture else (False,) * 5
     smoothing_on = gesture.get("smoothing_enabled", True) if gesture else True
+    is_pinching = gesture.get("is_pinching", False) if gesture else False
     sign_label, sign_col = SIGN_STYLE.get(sign, SIGN_STYLE["unknown"])
+
+    # Title, with a tracking lamp on the right edge. Losing the hand is the
+    # single most confusing failure — the cursor simply stops — so it gets the
+    # most prominent slot in the panel.
+    _text(frame, "HAND SIGN CONTROL", (box_x + 8, box_y + 18), scale=0.48, col=(0, 220, 255), thickness=2)
+    lamp_col = (0, 255, 120) if hand_visible else (60, 60, 200)
+    cv2.circle(frame, (box_x + box_w - 16, box_y + 13), 5, lamp_col, -1)
+    _text(frame, "TRACKING" if hand_visible else "NO HAND",
+          (box_x + box_w - 78, box_y + 34), scale=0.36, col=lamp_col, thickness=1)
 
     # Current sign
     _text(frame, f"Sign: {sign_label}", (box_x + 8, box_y + 44), scale=0.55, col=sign_col, thickness=2)
@@ -267,14 +321,37 @@ def draw_hud(
     pip_names = ("T", "I", "M", "R", "P")
     for i, (nm, ext) in enumerate(zip(pip_names, fingers_ext)):
         px = box_x + 12 + i * 30
-        py = box_y + 66
+        py = box_y + 70
         col_p = (0, 255, 120) if ext else (70, 70, 85)
         cv2.circle(frame, (px, py), 9, col_p, -1 if ext else 2)
-        _text(frame, nm, (px - 4, py + 24), scale=0.38, col=(170, 170, 180), thickness=1)
+        _text(frame, nm, (px - 4, py + 22), scale=0.38, col=(170, 170, 180), thickness=1)
 
-    # Status line
+    # ── Pinch and fire lamps — what main.py used to draw on the hand ──────
+    global _fire_flash_until
+    now = time.time()
     if click_fired:
-        st_txt, st_col = "FIRED!", (0, 80, 255)
+        _fire_flash_until = now + _FIRE_FLASH_SECONDS
+    firing = now < _fire_flash_until
+
+    pinch_col = CURSOR_PINCH_COL if is_pinching else (70, 70, 85)
+    cv2.circle(frame, (box_x + 14, box_y + 112), 6, pinch_col, -1 if is_pinching else 2)
+    _text(frame, "PINCH" if is_pinching else "pinch", (box_x + 26, box_y + 117),
+          scale=0.42, col=pinch_col, thickness=2 if is_pinching else 1)
+
+    fire_col = CURSOR_FIRE_COL if firing else (70, 70, 85)
+    cv2.circle(frame, (box_x + 120, box_y + 112), 6, fire_col, -1 if firing else 2)
+    _text(frame, "FIRED" if firing else "fire", (box_x + 132, box_y + 117),
+          scale=0.42, col=fire_col, thickness=2 if firing else 1)
+
+    # Status line — always the instruction for what to do next. The fire event
+    # itself is the lamp above; repeating it here would cost the one row that
+    # tells the player what to do with their hand.
+    if state == "READY":
+        # READY reverses the meaning of both signs: the fist is carrying the bird
+        # rather than drawing it, and opening the hand puts it back instead of
+        # firing. Saying "open to fire" here would be actively wrong.
+        st_txt, st_col = ("HOLD STILL to lock aim" if sign == "fist"
+                          else "Re-close fist to keep the bird"), (0, 200, 255)
     elif sign == "fist":
         st_txt, st_col = "HOLDING - open to fire", (0, 140, 255)
     elif sign == "open_palm":
@@ -282,7 +359,26 @@ def draw_hud(
     else:
         st_txt, st_col = "Make a fist to grab", (140, 140, 150)
 
-    _text(frame, st_txt, (box_x + 8, box_y + 108), scale=0.44, col=st_col, thickness=2)
+    _text(frame, st_txt, (box_x + 8, box_y + 140), scale=0.44, col=st_col, thickness=2)
+
+    # Phase + click mode: which of SELECTION / ARMED / FLIGHT the game thinks
+    # it is in. Without it, a fist that does nothing is indistinguishable from
+    # a fist that was not recognised.
+    _text(frame, f"Phase: {state}", (box_x + 8, box_y + 160), scale=0.42,
+          col=(0, 220, 255), thickness=1)
+    if click_mode:
+        _text(frame, f"Mode: {click_mode}", (box_x + 130, box_y + 160), scale=0.38,
+              col=(150, 160, 175), thickness=1)
+
+    # Raw push / drift, previously computed and passed in but never displayed.
+    _text(frame, f"Z push: {z_debug:+.3f}   Drift: {xy_drift:.1f}px",
+          (box_x + 8, box_y + 178), scale=0.38, col=(170, 180, 195), thickness=1)
+
+    # Depth, when a ToF source is driving it
+    depth_txt = (f"Depth: {tof_z_m:.2f}m  [{depth_source}]" if tof_active
+                 else f"Depth: {depth_source}")
+    _text(frame, depth_txt[:38], (box_x + 8, box_y + 194), scale=0.34,
+          col=(0, 220, 200) if tof_active else (120, 130, 145), thickness=1)
 
     # Jitter + smoothing state
     jitter = gesture.get("jitter", {}) if gesture else {}
@@ -291,16 +387,17 @@ def draw_hud(
     red_pct = jitter.get("jitter_reduction_pct", 0.0)
 
     j_text = f"Jitter: {smooth_std:.1f}px (Raw: {raw_std:.1f}px | -{red_pct:.0f}%)"
-    _text(frame, j_text, (box_x + 8, box_y + 126), scale=0.38, col=(0, 240, 200), thickness=1)
+    _text(frame, j_text, (box_x + 8, box_y + 210), scale=0.38, col=(0, 240, 200), thickness=1)
 
     sm_txt = "Smoothing: ON" if smoothing_on else "Smoothing: OFF (raw)"
     sm_col = (120, 140, 160) if smoothing_on else (0, 180, 255)
-    _text(frame, sm_txt, (box_x + 8, box_y + 141), scale=0.34, col=sm_col)
+    _text(frame, sm_txt, (box_x + 8, box_y + 226), scale=0.34, col=sm_col)
 
     # ── Key hints — bottom-right ──────────────────────────────────────────
     hints = {
         "SELECTION": "Make a FIST over a bird to grab it",
-        "ARMED":     "Move fist to pull | OPEN HAND to fire | Open hand + move UP to switch bird",
+        "READY":     "Keep the fist | Bring your hand somewhere comfortable | HOLD STILL to lock aim",
+        "ARMED":     "Move fist to pull | OPEN HAND to fire | Short pull = put the bird back",
         "FLIGHT":    "Bird in flight...",
     }
     hint = hints.get(state, "")
