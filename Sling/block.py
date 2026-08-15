@@ -11,13 +11,18 @@ import math
 import random
 
 # Ensure visual ai game engine imports are accessible
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine'))
-from visual_ai import Renderer3D, Mesh3D, Transform3D, Camera3D, Material
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine', 'src'))
+from visual_ai import (
+    Renderer3D, Mesh3D, Transform3D, Camera3D, Material,
+    render_creature, rgb_to_bgr, load_image,
+)
+from visual_ai.imaging import blit_sprite
 
 from physics import GRAVITY, FLOOR_Y, RESTITUTION, DAMAGE_FACTOR, BLOCK_HEALTH
 from config import (
     BLOCK_VX_TRANSFER, BLOCK_VY_TRANSFER, DEBRIS_FADE_FRAMES,
-    BLOCK_MATERIALS as MATERIALS, LIGHTING_SETTINGS
+    BLOCK_MATERIALS as MATERIALS, LIGHTING_SETTINGS,
+    TARGET, TARGET_SPEC,
 )
 
 # Global 3D Renderer instance for Block 3D depth rendering
@@ -29,6 +34,21 @@ _block_renderer3d = Renderer3D(
     light_intensity=LIGHTING_SETTINGS.get("LIGHT_INTENSITY", 0.85),
 )
 _block_cube_mesh = Mesh3D.create_cube(size=1.0)  # normalized unit cube mesh
+
+# Target artwork, rendered once. Same rule as the birds: an authored PNG in
+# assets/ wins, otherwise the engine rasterises the spec.
+_ASSET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+_target_sprite_cache: list = []
+
+
+def _target_sprite() -> np.ndarray:
+    """The target as BGRA, built on first use and reused thereafter."""
+    if not _target_sprite_cache:
+        path = os.path.join(_ASSET_DIR, f"{TARGET}.png")
+        sprite = (load_image(path) if os.path.isfile(path)
+                  else render_creature(TARGET_SPEC, view="front", size=192))
+        _target_sprite_cache.append(rgb_to_bgr(sprite))
+    return _target_sprite_cache[0]
 
 
 
@@ -342,9 +362,6 @@ class Block:
         # Crack overlays (drawn on top of the block face)
         self._draw_damage(frame, cx, cy, w, h, cos_a, sin_a)
 
-        # Crack overlays (drawn on top of the block face)
-        self._draw_damage(frame, cx, cy, w, h, cos_a, sin_a)
-
         # Health bar — only shown when damaged
 
     # ── Crack overlays ───────────────────────────────────────────────────────
@@ -463,18 +480,18 @@ class Block:
 
     # ── Health bar ───────────────────────────────────────────────────────────
 
-class Pig(Block):
-    """Circular green pig enemy."""
+class Target(Block):
+    """The circular creature you are trying to knock out. Artwork: TARGET_SPEC."""
     def __init__(self, x: int, y: int, radius: int = 20):
         # We store radius in width/height so AABB collision works reasonably well
-        super().__init__(x, y, w=radius*2, h=radius*2, material="pig")
+        super().__init__(x, y, w=radius*2, h=radius*2, material=TARGET)
         
-        # Override health for Pig specifically
-        from config import PIG_HEALTH
-        self.health = PIG_HEALTH
-        self.max_health = PIG_HEALTH
+        # Override health for the target specifically
+        from config import TARGET_HEALTH
+        self.health = TARGET_HEALTH
+        self.max_health = TARGET_HEALTH
         self.density = 1.2
-        self.is_pig = True
+        self.is_target = True
         self.radius = radius
 
     def draw(self, frame: np.ndarray, render_3d: bool = False):
@@ -484,7 +501,7 @@ class Pig(Block):
         cx, cy = int(self.cx), int(self.cy)
         h, w = frame.shape[:2]
 
-        # 0. Ground Drop Shadow under Pig
+        # 0. Ground Drop Shadow under target
         if LIGHTING_SETTINGS.get("SHADOWS_ENABLED", True):
             shadow_offset_y = int(FLOOR_Y - (self.cy + self.radius))
             if 0 <= shadow_offset_y < 160:
@@ -506,45 +523,12 @@ class Pig(Block):
                 cv2.ellipse(shadow_overlay, shadow_center, (max(2, shadow_w), max(2, shadow_h)), 0, 0, 360, shadow_col, -1, cv2.LINE_AA)
                 cv2.addWeighted(shadow_overlay, shadow_alpha, frame, 1.0 - shadow_alpha, 0, frame)
 
-        # Previous drawn vector style is now the primary style
-
-        # Fallback to drawn vector style
-        _block_cam3d.screen_width = float(w)
-        _block_cam3d.screen_height = float(h)
-        _block_cam3d.focal_length = (float(w) / 2.0) / math.tan(math.radians(_block_cam3d.fov / 2.0))
-        _block_cam3d.position[2] = _block_cam3d.focal_length
-
-        # Screen to camera translation
-        rel_x = float(cx) - (w / 2.0)
-        rel_y = (h / 2.0) - float(cy)
-
-        # 1. Render 3D Pig Sphere Body volume from visual_ai
-        from config import CHARACTER_3D_MATERIALS
-        pig_mat = CHARACTER_3D_MATERIALS.get("pig",
-         Material(base_color=(0.16, 0.78, 0.32, 1.0)))
-
-        # Slight tilt wobble if damaged
-        wobble = math.sin(self.health) * 10.0 if self.health < self.max_health else 0.0
-        transform = Transform3D(x=rel_x, y=rel_y, z=0.0, rx=10.0 + wobble, ry=wobble, rz=0.0, sx=self.radius, sy=self.radius, sz=self.radius)
-        _block_renderer3d.render_mesh(frame, Mesh3D.create_sphere(radius=1.0), transform, material=pig_mat)
-        
-        # 2. Draw 2D facial features (snout, eyes, pupils) over 3D sphere
-        snout_r = int(self.radius * 0.45)
-        cv2.ellipse(frame, (cx, cy + int(self.radius*0.1)), (snout_r, int(snout_r*0.7)), 0, 0, 360, (20, 180, 50), -1)
-        cv2.ellipse(frame, (cx, cy + int(self.radius*0.1)), (snout_r, int(snout_r*0.7)), 0, 0, 360, (10, 120, 40), 1)
-        
-        # Snout holes
-        cv2.circle(frame, (cx - int(self.radius*0.15), cy + int(self.radius*0.1)), max(2, int(self.radius*0.1)), (10, 100, 30), -1)
-        cv2.circle(frame, (cx + int(self.radius*0.15), cy + int(self.radius*0.1)), max(2, int(self.radius*0.1)), (10, 100, 30), -1)
-        
-        # Eyes
-        eye_r = max(3, int(self.radius * 0.25))
-        cv2.circle(frame, (cx - int(self.radius*0.4), cy - int(self.radius*0.3)), eye_r, (255, 255, 255), -1)
-        cv2.circle(frame, (cx + int(self.radius*0.4), cy - int(self.radius*0.3)), eye_r, (255, 255, 255), -1)
-        
-        # Pupils
-        pupil_r = max(1, int(eye_r * 0.4))
-        cv2.circle(frame, (cx - int(self.radius*0.35), cy - int(self.radius*0.25)), pupil_r, (0, 0, 0), -1)
-        cv2.circle(frame, (cx + int(self.radius*0.45), cy - int(self.radius*0.25)), pupil_r, (0, 0, 0), -1)
+        # Body. The sphere-plus-hand-drawn-face this used to be is gone; the
+        # creature is a spec in config.py that the engine rasterises, exactly
+        # like the birds. A damaged target rocks slightly, which the blit gets
+        # for free as a rotation.
+        wobble = math.sin(self.health) * 8.0 if self.health < self.max_health else 0.0
+        blit_sprite(frame, _target_sprite(), cx, cy,
+                    size=int(self.radius * 2.3), angle=wobble)
 
         # Health bar — only shown when damaged

@@ -1,5 +1,5 @@
 """
-config.py -- Central configuration for Angry Birds OpenCV.
+config.py -- Central configuration for Sling.
 
 All magic numbers live here.  Edit this file to tune gameplay, visuals,
 and gesture sensitivity without touching any other source file.
@@ -72,10 +72,10 @@ IMPACT_POP_DURATION   = 15   # frames the impact-ring animation lasts
 # =============================================================================
 PTS_BLOCK       = 500   # score for destroying a main block
 PTS_DEBRIS      = 100   # score for destroying a debris piece
-PTS_PIG         = 5000  # score for destroying a pig
+PTS_TARGET      = 5000  # score for destroying a target
 PTS_UNUSED_BIRD = 10000 # bonus for remaining birds
 
-PIG_HEALTH      = 40    # hit points for a pig
+TARGET_HEALTH   = 40    # hit points for a target
 
 # Star rating thresholds (per level basis could be refined, using globals for simplicity)
 STAR_1_SCORE    = 10000

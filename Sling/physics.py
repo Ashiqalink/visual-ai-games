@@ -128,13 +128,13 @@ def _legacy_resolve_block_collision(b1, b2):
     if impact_speed > MIN_DAMAGE_VEL:
         damage = (impact_speed - MIN_DAMAGE_VEL) * 2.5
         if not is_b1_static:
-            if getattr(b1, "is_pig", False):
+            if getattr(b1, "is_target", False):
                 b1.health = 0
             else:
                 b1.health -= damage
             b1.angular_vel += random.uniform(-1.5, 1.5) * (impact_speed / 5.0)
         if not is_b2_static:
-            if getattr(b2, "is_pig", False):
+            if getattr(b2, "is_target", False):
                 b2.health = 0
             else:
                 b2.health -= damage
@@ -214,12 +214,12 @@ def resolve_block_collision(b1, b2):
     if impact_speed > MIN_DAMAGE_VEL:
         damage = (impact_speed - MIN_DAMAGE_VEL) * 2.5
         if not static1:
-            if getattr(b1, "is_pig", False):
+            if getattr(b1, "is_target", False):
                 b1.health = 0
             else:
                 b1.health -= damage
         if not static2:
-            if getattr(b2, "is_pig", False):
+            if getattr(b2, "is_target", False):
                 b2.health = 0
             else:
                 b2.health -= damage
