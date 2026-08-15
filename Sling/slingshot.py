@@ -66,12 +66,9 @@ def _snap_pos():
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _elastic_color(pull_dist: float):
-    """Blend elastic colour using visual_ai.lerp."""
+    """Blend elastic colour (BGR) from relaxed (NEAR) to stretched (FAR) using visual_ai.lerp."""
     t = min(1.0, pull_dist / 150.0)
-    r = int(lerp(ELASTIC_COL_FAR[2], ELASTIC_COL_NEAR[2], t))
-    g = int(lerp(ELASTIC_COL_FAR[1], ELASTIC_COL_NEAR[1], t))
-    b = int(lerp(ELASTIC_COL_FAR[0], ELASTIC_COL_NEAR[0], t))
-    return (b, g, r)
+    return tuple(int(lerp(n, f, t)) for n, f in zip(ELASTIC_COL_NEAR, ELASTIC_COL_FAR))
 
 
 def _elastic_thickness(pull_dist: float) -> int:
