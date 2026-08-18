@@ -1,7 +1,17 @@
+# avatarcatch only. To install for every game in the repo instead, use the
+# root requirements.txt.
+#
+# The engine is not listed here on purpose: engine_bootstrap.ensure_engine()
+# finds a sibling clone of visual-ai-game-engine without anything being
+# installed. `pip install -e "../visual ai game engine"` (run from the repo
+# root) is optional and only adds the compiled C++ physics core.
+#
+# Requires Python 3.9-3.12. mediapipe publishes no wheels for 3.13+.
+
 opencv-python>=4.8.0
 numpy>=1.24.0
 mediapipe>=0.10.14,<=0.10.35
+
 # MODNet portrait matting runs through visual_ai.matting, which needs an ONNX
 # runtime. Without it the capture silently degrades to an uncut center crop.
 onnxruntime>=1.17.0
--e "../../visual ai game engine"

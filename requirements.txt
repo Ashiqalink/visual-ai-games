@@ -1,0 +1,29 @@
+# Everything every game in this repo needs. Install from the repo root:
+#
+#     pip install -r requirements.txt
+#
+# The engine itself is deliberately NOT listed here. These games import
+# visual_ai from a sibling clone of visual-ai-game-engine via
+# engine_bootstrap.ensure_engine(), which needs the folder to exist and
+# nothing to be installed. Installing it is optional and only buys you the
+# compiled C++ physics core:
+#
+#     pip install -e "../visual ai game engine"
+#
+# Requires Python 3.9-3.12. mediapipe publishes no wheels for 3.13+.
+
+opencv-python>=4.8.0
+numpy>=1.24.0
+mediapipe>=0.10.14,<=0.10.35
+
+# Sling's HUD reports process CPU and memory.
+psutil>=5.9.0
+
+# Sling's renderer-agnostic spikes (bird_pygame.py, spike_pygame.py) draw
+# through pygame instead of OpenCV. The main game does not need it.
+pygame>=2.5.0
+
+# avatarcatch's MODNet portrait matting runs through visual_ai.matting, which
+# needs an ONNX runtime. Without it the capture silently degrades to an uncut
+# center crop, so it is a real dependency of that game, not a nicety.
+onnxruntime>=1.17.0
