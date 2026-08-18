@@ -1,10 +1,11 @@
 """
 Avatar Catch — test harness for "capture your avatar once, play with it".
 
-Not a real game, a testbed: on launch the player holds still for a short
-countdown, one frame is grabbed from the live pipeline, matted to a
-transparent cutout, and that cutout becomes the paddle sprite for the rest of
-the session. Everything downstream of capture (movement, collisions, score)
+Not a real game, a testbed: on launch the pipeline's face detector frames the
+player, who holds still for a short countdown, then one frame is grabbed from
+the live pipeline, matted to a transparent cutout, and that cutout becomes the
+paddle sprite for the rest of the session. Gameplay after that is driven by
+the hand, but the capture is not — see main() for why the face runs it. Everything downstream of capture (movement, collisions, score)
 is placeholder catch-the-falling-shapes gameplay — the point being tested is
 the capture -> matte -> reuse pipeline, not this game design.
 
@@ -51,6 +52,7 @@ TITLE = "Avatar Catch (test harness)"
 MATTE_BACKEND = "modnet"  # "modnet" | "rembg" — modnet needs weights, see module docstring
 
 HOLD_STILL_SECONDS = 3.0
+STILL_RADIUS = 45  # px of face drift that restarts the countdown
 AVATAR_SIZE = 140
 
 CATCH_SPEED_MIN = 4
@@ -151,11 +153,15 @@ def main():
     STATE_CAPTURE, STATE_PLAYING, STATE_GAMEOVER = "capture", "playing", "gameover"
     state = STATE_CAPTURE
     hold_start = None
+    hold_anchor = None  # face centre the countdown started at, in canvas px
     avatar = None  # RGBA, set once capture completes
     matte_note = ""  # which backend produced `avatar`, shown on the HUD
 
     paddle_x = W / 2.0
+    cam_frame = None
     hand_visible = False
+    face_visible = False
+    face_box = (0, 0, 0, 0)
     shapes = []
     score = 0
     lives = 3
@@ -167,9 +173,15 @@ def main():
         except queue.Empty:
             latest = None
 
-        cam_frame = latest.get("frame") if latest else None
+        # The queue only refills at camera rate, so most loop iterations drain
+        # nothing. Everything below reads the last known frame and face rather
+        # than treating an empty queue as "no face", which would otherwise
+        # restart the countdown on roughly every other iteration.
         if latest is not None:
+            cam_frame = latest.get("frame", cam_frame)
             hand_visible = latest.get("hand_visible", False)
+            face_visible = latest.get("face_visible", False)
+            face_box = latest.get("face_box", (0, 0, 0, 0))
             if hand_visible:
                 index_x = float(latest.get("index_pos", (W // 2, 0))[0])
                 paddle_x = paddle_x * 0.7 + index_x * 0.3
@@ -182,13 +194,32 @@ def main():
                 preview = cv2.resize(cam_frame, (W, H))
                 canvas[:] = preview
 
-            if hand_visible and hold_start is None:
-                hold_start = time.time()
-            elif not hand_visible:
-                hold_start = None
+            # The countdown tracks the face rather than a raised hand. A hand
+            # only proved someone was there; a face is what the capture is
+            # actually of, so this both frames the shot and gives "hold still"
+            # something to measure — drifting more than STILL_RADIUS from
+            # where the countdown started restarts it from the new position.
+            face_center = None
+            if face_visible and face_box[2] > 0 and cam_frame is not None:
+                scale_x, scale_y = W / cam_frame.shape[1], H / cam_frame.shape[0]
+                face_center = ((face_box[0] + face_box[2] / 2.0) * scale_x,
+                               (face_box[1] + face_box[3] / 2.0) * scale_y)
+                cv2.rectangle(canvas,
+                              (int(face_box[0] * scale_x), int(face_box[1] * scale_y)),
+                              (int((face_box[0] + face_box[2]) * scale_x),
+                               int((face_box[1] + face_box[3]) * scale_y)),
+                              (0, 255, 255), 2)
 
-            draw_text(canvas, "Hold a hand up to frame yourself, then hold still",
-                      W // 2 - 320, 40, 0.8)
+            if face_center is None:
+                hold_start = None
+                hold_anchor = None
+            elif hold_start is None or np.hypot(face_center[0] - hold_anchor[0],
+                                                face_center[1] - hold_anchor[1]) > STILL_RADIUS:
+                hold_start = time.time()
+                hold_anchor = face_center
+
+            draw_text(canvas, "Look at the camera and hold still",
+                      W // 2 - 240, 40, 0.8)
 
             if hold_start is not None:
                 elapsed = time.time() - hold_start
@@ -198,7 +229,7 @@ def main():
                     avatar, matte_note = capture_avatar(cam_frame)
                     state = STATE_PLAYING
             else:
-                draw_text(canvas, "Waiting for hand tracking...", W // 2 - 160, H // 2, 0.9, (0, 180, 255))
+                draw_text(canvas, "Waiting for a face...", W // 2 - 140, H // 2, 0.9, (0, 180, 255))
 
         elif state == STATE_PLAYING:
             frame_count += 1
@@ -242,6 +273,7 @@ def main():
         elif key == ord('r'):
             state = STATE_CAPTURE
             hold_start = None
+            hold_anchor = None
             avatar = None
             matte_note = ""
             shapes = []
