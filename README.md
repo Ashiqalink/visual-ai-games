@@ -89,6 +89,42 @@ python punchy/tof_punch.py
 
 Each game needs a webcam. Press `q` to quit.
 
+## What these games do with your camera
+
+Every game here points a webcam at you, so it is worth being precise about
+where those frames go: **nowhere**. They are read from the camera, passed
+through MediaPipe in memory, and dropped when the next frame arrives. Nothing
+in this repo writes an image or a video to disk, and nothing uploads one —
+there is no `imwrite`, no `VideoWriter`, and no analytics or telemetry of any
+kind. Closing the window is all it takes to be rid of the data.
+
+`avatarcatch` is the one game that keeps a frame rather than discarding it: it
+photographs you once and uses the cutout as your paddle for the session. It
+asks first — the countdown does not start until you press `SPACE`, and until
+then you get a preview without a capture. The photo lives in memory only,
+`R` discards it, and quitting takes it with you.
+
+Two features fetch a model file the first time you use them, and only then:
+
+| Feature | Downloads | From |
+| --- | --- | --- |
+| `avatarcatch` portrait matting | MODNet weights, 25 MB, pinned to a fixed revision and SHA-256 verified | huggingface.co |
+| Person-mask segmentation | MediaPipe selfie segmenter | storage.googleapis.com |
+
+Both land in a per-user cache and are reused afterwards. If you would rather
+fetch them yourself, point `VISUAL_AI_MODNET_ONNX` at a local copy of the
+weights and no download is attempted. Everything else runs fully offline.
+
+## License
+
+The games in this repo are MIT licensed — download them, play them, fork them,
+build on them. See `LICENSE`.
+
+That covers **this repo only**. The engine they import is a separate,
+proprietary project: it is not open source, carries no license grant, and
+nothing here gives you any right to it. The MIT grant above reaches the game
+code and nothing underneath it.
+
 ## Repo layout notes
 
 `Sling/` was imported from
