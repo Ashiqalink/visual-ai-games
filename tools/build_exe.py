@@ -163,11 +163,26 @@ def main(argv: list[str]) -> int:
     if (ENGINE / "assets").is_dir():
         command += data(ENGINE / "assets", "assets")
 
-    # The games themselves.
+    # The games themselves, from a filtered staging copy.
+    #
+    # --add-data takes a directory or nothing: it has no exclude option and
+    # copies whatever it is pointed at, recursively. Sling/ carries its own
+    # 1,064 MB .venv - gitignored, so it shows up in neither git status nor a
+    # fresh clone - and pointing --add-data straight at the source tree
+    # shipped that entire virtualenv inside the bundle. It was 71% of the
+    # build. Stage a copy without the junk and bundle that instead.
+    staging = ROOT / "build" / "staged-games"
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(parents=True, exist_ok=True)
+    skip = shutil.ignore_patterns(
+        ".venv", "venv", "env", "__pycache__", "*.pyc", "*.pyo",
+        ".agents", ".git", "*.log", "*.spec", "build", "dist",
+    )
     for name in GAME_DIRS:
         directory = ROOT / name
         if directory.is_dir():
-            command += data(directory, name)
+            shutil.copytree(directory, staging / name, ignore=skip)
+            command += data(staging / name, name)
     for name in ROOT_MODULES:
         if (ROOT / name).is_file():
             command += data(ROOT / name, ".")
