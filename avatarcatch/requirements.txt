@@ -1,0 +1,7 @@
+opencv-python>=4.8.0
+numpy>=1.24.0
+mediapipe>=0.10.14,<=0.10.35
+# MODNet portrait matting runs through visual_ai.matting, which needs an ONNX
+# runtime. Without it the capture silently degrades to an uncut center crop.
+onnxruntime>=1.17.0
+-e "../../visual ai game engine"

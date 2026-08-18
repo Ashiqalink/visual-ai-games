@@ -68,8 +68,17 @@ def _center_crop_rgba(bgr_frame: np.ndarray) -> np.ndarray:
     return np.dstack([rgb, np.full(rgb.shape[:2], 255, dtype=np.uint8)])
 
 
-def capture_avatar(bgr_frame: np.ndarray) -> np.ndarray:
-    """One still frame in, an AVATAR_SIZE x AVATAR_SIZE RGBA cutout out."""
+def capture_avatar(bgr_frame: np.ndarray) -> tuple[np.ndarray, str]:
+    """
+    One still frame in, an (AVATAR_SIZE x AVATAR_SIZE RGBA cutout, label) out.
+
+    The label says which backend actually ran, and the caller puts it on
+    screen. That matters more than it looks: when the fallback fires, the
+    sprite is an uncut opaque rectangle, and a rectangle is exactly what a
+    working matte of someone filling the frame could plausibly look like at a
+    glance. Reporting it only on stdout — which nobody reads while a game
+    window has focus — makes a missing dependency read as a broken feature.
+    """
     rgb = bgr_to_rgb(bgr_frame)
     try:
         if MATTE_BACKEND == "modnet":
@@ -80,13 +89,16 @@ def capture_avatar(bgr_frame: np.ndarray) -> np.ndarray:
         print(f"[avatar_catch] {MATTE_BACKEND} matting unavailable ({exc}); "
               f"falling back to a plain center crop with no matte.")
         # Already square and opaque, so there is nothing to crop to.
-        return resize_rgba(_center_crop_rgba(bgr_frame), AVATAR_SIZE, AVATAR_SIZE)
+        return (resize_rgba(_center_crop_rgba(bgr_frame), AVATAR_SIZE, AVATAR_SIZE),
+                f"{MATTE_BACKEND} unavailable - uncut crop (see console)")
 
     # pad_to trims to what the matte actually kept and fits that on a square
     # canvas, so the player is not squashed by the frame's 4:3 aspect. It
     # resizes alpha-aware too — resampling straight alpha would drag
     # background colour into the soft hair edges MODNet is here to get right.
-    return pad_to(rgba, AVATAR_SIZE, fit=1.0)
+    sprite = pad_to(rgba, AVATAR_SIZE, fit=1.0)
+    kept = float(sprite[..., 3].mean()) / 255.0
+    return sprite, f"{MATTE_BACKEND} matte - {kept:.0%} of the sprite kept"
 
 
 def draw_text(img, text, x, y, size=1.0, color=(255, 255, 255), thickness=2):
@@ -140,6 +152,7 @@ def main():
     state = STATE_CAPTURE
     hold_start = None
     avatar = None  # RGBA, set once capture completes
+    matte_note = ""  # which backend produced `avatar`, shown on the HUD
 
     paddle_x = W / 2.0
     hand_visible = False
@@ -182,7 +195,7 @@ def main():
                 remaining = max(0.0, HOLD_STILL_SECONDS - elapsed)
                 draw_text(canvas, f"Capturing in {remaining:0.1f}s", W // 2 - 120, H // 2, 1.2, (0, 255, 255))
                 if elapsed >= HOLD_STILL_SECONDS and cam_frame is not None:
-                    avatar = capture_avatar(cam_frame)
+                    avatar, matte_note = capture_avatar(cam_frame)
                     state = STATE_PLAYING
             else:
                 draw_text(canvas, "Waiting for hand tracking...", W // 2 - 160, H // 2, 0.9, (0, 180, 255))
@@ -209,6 +222,7 @@ def main():
 
             draw_text(canvas, f"Score: {score}", 20, 40)
             draw_text(canvas, f"Lives: {lives}", 20, 70)
+            draw_text(canvas, matte_note, 20, 96, 0.5, (140, 220, 255), 1)
             draw_text(canvas, "Move your hand left/right to catch shapes with your avatar",
                       20, H - 20, 0.5, (150, 150, 150))
 
@@ -229,6 +243,7 @@ def main():
             state = STATE_CAPTURE
             hold_start = None
             avatar = None
+            matte_note = ""
             shapes = []
             score = 0
             lives = 3
