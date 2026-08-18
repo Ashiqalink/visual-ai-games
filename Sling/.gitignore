@@ -21,3 +21,6 @@ Thumbs.db
 
 # Build/install logs
 *.log
+
+# Generated sprite cache (rasterised from config.py specs on first run)
+assets/.sprite-cache/

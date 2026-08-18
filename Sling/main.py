@@ -41,16 +41,8 @@ sys.path.insert(0, os.path.join(BASE_DIR, '..'))
 from engine_bootstrap import ensure_engine
 ensure_engine()
 
-import psutil
-try:
-    import GPUtil
-    GPUTIL_AVAILABLE = True
-except ImportError:
-    GPUTIL_AVAILABLE = False
-
-from visual_ai import VisionPipeline, CPP_ENGINE_AVAILABLE
-from game import Game
-import ui
+# config.py depends on nothing but os/sys, so the window geometry is available
+# before the expensive imports below — see _splash().
 from config import (
     FRAME_W, FRAME_H, BG_COLOR,
     CAM_W, CAM_H, CAM_MARGIN, CAM_BORDER, CAM_BORDER_COLOR,
@@ -60,7 +52,46 @@ from config import (
     CURSOR_INDEX_COL,
 )
 
-# (Window / canvas constants now imported from config.py)
+
+def _splash(message: str):
+    """
+    Put the window on screen before the slow imports run.
+
+    `import visual_ai` pulls in MediaPipe, which costs over a second on its own,
+    and nothing was drawn until after it finished — so launching Sling looked
+    like nothing had happened at all. This paints a title card first. It is a
+    one-shot paint, not a loop: highgui gets no events while an import blocks,
+    which is fine because there is nothing here to interact with.
+    """
+    canvas = np.zeros((FRAME_H, FRAME_W, 3), dtype=np.uint8)
+    canvas[:] = BG_COLOR
+    cv2.putText(canvas, "SLING", (FRAME_W // 2 - 110, FRAME_H // 2 - 20),
+                cv2.FONT_HERSHEY_SIMPLEX, 2.2, (60, 200, 255), 4, cv2.LINE_AA)
+    cv2.putText(canvas, message, (FRAME_W // 2 - 110, FRAME_H // 2 + 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (140, 190, 225), 1, cv2.LINE_AA)
+    cv2.namedWindow("Sling", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Sling", FRAME_W, FRAME_H)
+    cv2.imshow("Sling", canvas)
+    cv2.waitKey(1)
+
+
+_splash("Loading vision engine...")
+
+import psutil
+try:
+    import GPUtil
+    GPUTIL_AVAILABLE = True
+except ImportError:
+    GPUTIL_AVAILABLE = False
+
+from visual_ai import VisionPipeline, CPP_ENGINE_AVAILABLE
+
+_splash("Preparing game...")
+
+from game import Game
+import ui
+
+# (Window / canvas constants imported from config.py above, before _splash.)
 
 
 _last_metrics_time = 0.0
@@ -188,9 +219,23 @@ def main():
             game._z_delta_display  = latest.get("z_delta", 0.0)
             game._xy_drift_display = latest.get("xy_drift", 0.0)
 
-        # Wait for first camera frame before rendering
+        # The camera takes ~0.75 s to hand over its first frame. Rendering
+        # nothing until then left the window blank for the whole of startup,
+        # which reads as a hang; the how-to-play card goes up immediately
+        # instead, so the wait is spent reading the controls. Keys are ignored
+        # until the camera is live — dismissing the card early would drop the
+        # player into a game that cannot see their hand yet.
         if cam_frame is None:
-            time.sleep(0.005)
+            canvas[:] = BG_COLOR
+            ui.draw_instructions_card(canvas)
+            cv2.putText(canvas, "Starting camera...", (FRAME_W // 2 - 90, FRAME_H - 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (120, 180, 220), 1, cv2.LINE_AA)
+            cv2.imshow("Sling", canvas)
+            if (cv2.waitKey(1) & 0xFF) in (ord('q'), ord('Q'), 27):
+                pipeline.stop()
+                cv2.destroyAllWindows()
+                return
+            prev_time = time.time()   # do not charge the wait to the first frame
             continue
 
         # ── FPS calculation & Timing ──────────────────────────────────────

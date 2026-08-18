@@ -15,6 +15,7 @@ See the sprite section at the bottom of this file.
 
 import cv2
 import numpy as np
+import hashlib
 import math
 import collections
 import os
@@ -299,6 +300,25 @@ ASSET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 SPRITE_SIZE = 192
 
 
+#: Rasterised sprites live here between runs. `render_creature` costs ~37 ms per
+#: view, and ten of them (five kinds x two views) put ~0.4 s of pure CPU in front
+#: of the first frame every single launch. The output is deterministic, so it is
+#: cached to disk and only re-rendered when the inputs change.
+SPRITE_CACHE_DIR = os.path.join(ASSET_DIR, ".sprite-cache")
+
+
+def _sprite_cache_key(kind: str, view: str) -> str:
+    """
+    Cache filename for one creature view, keyed by everything that changes it.
+
+    The spec's repr plus the raster size go through a hash, so editing a
+    creature in config.py — or bumping SPRITE_SIZE — lands on a different file
+    and the stale sprite is simply never read again. No manual cache-busting.
+    """
+    payload = f"{kind}|{view}|{SPRITE_SIZE}|{BIRD_SPECS[kind]!r}".encode("utf-8")
+    return f"{kind}_{view}_{hashlib.sha1(payload).hexdigest()[:12]}.png"
+
+
 def _sprite(kind: str, view: str) -> np.ndarray:
     """
     One creature sprite as BGRA, from disk if authored, from the engine if not.
@@ -312,7 +332,30 @@ def _sprite(kind: str, view: str) -> np.ndarray:
         # load_image normalises to RGBA, so a PNG saved without an alpha
         # channel still arrives with one and the blit path stays uniform.
         return rgb_to_bgr(load_image(path))
-    return rgb_to_bgr(render_creature(BIRD_SPECS[kind], view=view, size=SPRITE_SIZE))
+
+    # No authored art — fall back to the engine's rasteriser, via the cache.
+    cached = os.path.join(SPRITE_CACHE_DIR, _sprite_cache_key(kind, view))
+    if os.path.isfile(cached):
+        try:
+            img = cv2.imread(cached, cv2.IMREAD_UNCHANGED)
+            if img is not None and img.ndim == 3 and img.shape[2] == 4:
+                return img
+        except Exception:
+            pass          # unreadable/half-written cache entry — re-render below
+
+    sprite = rgb_to_bgr(render_creature(BIRD_SPECS[kind], view=view, size=SPRITE_SIZE))
+    try:
+        os.makedirs(SPRITE_CACHE_DIR, exist_ok=True)
+        # Write to a temp name and rename, so a crash mid-write cannot leave a
+        # truncated PNG that the next launch would load as the bird. The temp
+        # name keeps the .png extension — imwrite picks its encoder from the
+        # extension and silently writes nothing for an unknown one.
+        tmp = cached + ".tmp.png"
+        if cv2.imwrite(tmp, sprite):
+            os.replace(tmp, cached)
+    except Exception:
+        pass              # read-only checkout: slower start, still correct
+    return sprite
 
 
 def _load_bird_images():
