@@ -45,7 +45,14 @@ try:
 except Exception:
     pass
 
-ROOT = Path(__file__).resolve().parent
+#: True inside the PyInstaller bundle. The frozen build ships the engine and
+#: every game inside the executable, so there is no sibling clone to find and
+#: no second interpreter to spawn - see engine_src() and run_title().
+FROZEN = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
+
+#: Where the games and the engine live. In a bundle that is the unpacked
+#: temporary directory PyInstaller extracts to, not the location of the .exe.
+ROOT = Path(sys._MEIPASS) if FROZEN else Path(__file__).resolve().parent
 
 ENV_CAMERA = "VISUAL_AI_CAMERA"
 ENV_WIDTH = "VISUAL_AI_WIDTH"
@@ -62,6 +69,11 @@ MAX_PY = (3, 12)
 
 def engine_src() -> Path | None:
     """The engine's src/ directory, or None. Mirrors engine_bootstrap."""
+    if FROZEN:
+        # The engine is bundled, so visual_ai imports without any path work.
+        # Report the bundle root rather than None: callers use this to decide
+        # whether the engine was found at all, and in a bundle it always is.
+        return ROOT
     override = os.environ.get("VISUAL_AI_ENGINE")
     candidates = []
     if override:
@@ -222,6 +234,15 @@ def find_title(query: str) -> Title | None:
     for t in _titles():
         if query == t.id or query in t.aliases:
             return t
+    # Accept a path to a game file, not just an id. run_lab_tests.py launches
+    # each game as `sys.executable <path> --headless N`, which in a frozen
+    # build makes sys.executable this launcher and hands it a path where it
+    # expects a title - so the whole suite reported 0/7 inside the bundle.
+    if query.endswith(".py"):
+        name = Path(query).name
+        for t in _titles():
+            if t.entry.name.lower() == name:
+                return t
     matches = [t for t in _titles() if t.id.startswith(query)]
     return matches[0] if len(matches) == 1 else None
 
@@ -318,11 +339,21 @@ def cmd_doctor(args) -> int:
             mod = __import__(name)
             version = getattr(mod, "__version__", "?")
             print(f"  {green('ok  '):<9} {name} {dim(version)}")
-        except ImportError:
+        except ImportError as exc:
             required = name in ("cv2", "numpy", "mediapipe")
             tag = red("MISSING") if required else yellow("absent ")
             why = "required" if required else "optional"
-            print(f"  {tag:<9} {name} {dim('(' + why + ')')}")
+            # Report the reason, not just the absence. A package can be
+            # installed and still fail to import - mediapipe does exactly that
+            # when one of its own transitive imports is unavailable - and
+            # "MISSING mediapipe" on a machine that plainly has it sends
+            # people to reinstall a package that was never the problem.
+            detail = str(exc)
+            if detail and name not in detail:
+                detail = f"{why}; {detail}"
+            else:
+                detail = why
+            print(f"  {tag:<9} {name} {dim('(' + detail + ')')}")
 
     try:
         import visual_ai
@@ -422,29 +453,56 @@ def run_title(title: Title, args) -> int:
     env[ENV_ENTRY] = str(title.entry)
     extra = list(getattr(args, "extra", []) or [])
 
-    show_controls(title)
-    print(f"\n  {dim('python  ')} {sys.executable}")
-    print(f"  {dim('engine  ')} {engine_src()}")
-    overrides = [f"{k.replace('VISUAL_AI_', '').lower()}={env[k]}"
-                 for k in (ENV_CAMERA, ENV_WIDTH, ENV_HEIGHT, ENV_SMOOTH, ENV_TOF)
-                 if k in env]
-    if overrides:
-        print(f"  {dim('override')} {', '.join(overrides)}")
-    print(f"  {dim('cwd     ')} {title.directory}\n")
-    # Without this the banner sits in a buffered pipe and lands after the
-    # game's own output.
-    sys.stdout.flush()
+    # Invoked by path rather than by id means a machine is calling: that is
+    # how run_lab_tests.py launches each game, and it parses stdout as JSON.
+    # The banner below would corrupt that, which is why the suite reported
+    # 0/7 inside the frozen bundle even once the games ran correctly.
+    quiet = bool(getattr(args, "quiet", False))
 
-    command = [sys.executable, str(Path(__file__).resolve()), "__exec", *extra]
+    if not quiet:
+        show_controls(title)
+        print(f"\n  {dim('python  ')} {sys.executable}")
+        print(f"  {dim('engine  ')} {engine_src()}")
+        overrides = [f"{k.replace('VISUAL_AI_', '').lower()}={env[k]}"
+                     for k in (ENV_CAMERA, ENV_WIDTH, ENV_HEIGHT, ENV_SMOOTH, ENV_TOF)
+                     if k in env]
+        if overrides:
+            print(f"  {dim('override')} {', '.join(overrides)}")
+        print(f"  {dim('cwd     ')} {title.directory}\n")
+        # Without this the banner sits in a buffered pipe and lands after the
+        # game's own output.
+        sys.stdout.flush()
+
     started = time.time()
-    try:
-        code = subprocess.call(command, cwd=str(title.directory), env=env)
-    except KeyboardInterrupt:
-        code = 130
+    if FROZEN:
+        # A frozen executable cannot re-spawn itself as an interpreter: there
+        # is no play.py on disk to hand it, and sys.executable is the bundle.
+        # Run the game in this process instead. The overrides still apply -
+        # they are read from the environment by _patch_pipeline either way -
+        # and the games each guard their entry point with __main__, so runpy
+        # reaches the same code the subprocess path would have.
+        os.environ.update({k: v for k, v in env.items() if k.startswith("VISUAL_AI_")})
+        previous = os.getcwd()
+        try:
+            os.chdir(str(title.directory))
+            code = exec_entry(extra)
+        except SystemExit as exc:            # a game calling sys.exit()
+            code = exc.code if isinstance(exc.code, int) else 0
+        except KeyboardInterrupt:
+            code = 130
+        finally:
+            os.chdir(previous)
+    else:
+        command = [sys.executable, str(Path(__file__).resolve()), "__exec", *extra]
+        try:
+            code = subprocess.call(command, cwd=str(title.directory), env=env)
+        except KeyboardInterrupt:
+            code = 130
 
     elapsed = time.time() - started
-    verdict = green("exited cleanly") if code == 0 else red(f"exited with code {code}")
-    print(f"\n  {title.name} {verdict} after {elapsed:,.1f}s\n")
+    if not quiet:
+        verdict = green("exited cleanly") if code == 0 else red(f"exited with code {code}")
+        print(f"\n  {title.name} {verdict} after {elapsed:,.1f}s\n")
     return code
 
 
@@ -580,6 +638,9 @@ def main(argv: list[str]) -> int:
     args.title = title_arg
     args.rest = passthrough[1:]
     args.extra = extra
+    # A path means a script is driving us and wants only the game's own
+    # output on stdout - see the `quiet` note in run_title().
+    args.quiet = bool(title_arg) and title_arg.lower().endswith(".py")
 
     if args.title in (None, "menu"):
         return cmd_menu(args)
