@@ -31,7 +31,7 @@ from slingshot import SLING_X, SLING_Y, FORK_LEFT, FORK_RIGHT
 from physics import (
     POWER_FACTOR, MAX_PULL, FLOOR_Y, BIRD_LINGER,
     bird_hits_block, distance, magnitude,
-    resolve_block_collision,
+    resolve_block_collision, resolve_bird_block_collision,
 )
 import slingshot
 import ui
@@ -850,32 +850,41 @@ class Game:
         for blk in self.blocks:
             if not blk.active:
                 continue
-            if id(blk) in bird._hit_blocks:
-                continue
             if not bird_hits_block(bird, blk):
                 continue
 
-            # Hit!
-            bird._hit_blocks.add(id(blk))
-            blk.apply_impulse(bird.vx, bird.vy, bird.mass)
-            bird.impact_timer = 15
+            if id(blk) not in bird._hit_blocks:
+                # Hit!
+                bird._hit_blocks.add(id(blk))
+                blk.apply_impulse(bird.vx, bird.vy, bird.mass)
+                bird.impact_timer = 15
 
-            # Slow bird based on block toughness (ice easy, stone hard)
-            block_resist = getattr(blk, "density", 1.0) * 0.3
-            factor = max(0.1, 1.0 - block_resist)
-            bird.vx *= factor
-            bird.vy *= factor
-            
-            # Screen shake on hard impact
-            impact_speed = magnitude(bird.vx, bird.vy)
-            if impact_speed > 3.0:
-                self._shake_frames = 10
-                self._shake_intensity = int(impact_speed)
+                # Slow bird based on block toughness (ice easy, stone hard)
+                block_resist = getattr(blk, "density", 1.0) * 0.3
+                factor = max(0.1, 1.0 - block_resist)
+                bird.vx *= factor
+                bird.vy *= factor
 
-            # If bird is almost stopped after hit, start grounding
-            if magnitude(bird.vx, bird.vy) < BIRD_STOP_SPEED and not bird.grounded:
+                # Screen shake on hard impact
+                impact_speed = magnitude(bird.vx, bird.vy)
+                if impact_speed > 3.0:
+                    self._shake_frames = 10
+                    self._shake_intensity = int(impact_speed)
+
+                # If bird is almost stopped after hit, start grounding
+                if magnitude(bird.vx, bird.vy) < BIRD_STOP_SPEED and not bird.grounded:
+                    bird.grounded = True
+                    bird.linger_timer = BIRD_LINGER // 2
+
+            # A destroyed block offers no surface — the bird punches through.
+            if blk.health <= 0:
+                continue
+
+            # Push the bird back out and bounce it, same as the floor does,
+            # so it can never come to rest inside a surviving block.
+            if resolve_bird_block_collision(bird, blk) and not bird.grounded:
                 bird.grounded = True
-                bird.linger_timer = BIRD_LINGER // 2
+                bird.linger_timer = BIRD_LINGER
 
         # ── Bird deactivated or off-screen → next bird ────────────────────
         if (not bird.active

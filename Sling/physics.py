@@ -25,6 +25,42 @@ def bird_hits_block(bird, block) -> bool:
     return intersect_circle_aabb((bird.x, bird.y, bird.radius), (block.cx, block.cy, bw, bh))
 
 
+def resolve_bird_block_collision(bird, block) -> bool:
+    """Push the bird out of a surviving block and bounce it, mirroring the
+    floor response.  Called every frame the bird overlaps a live block, so the
+    bird rests on surfaces instead of sinking into them.
+
+    Returns True when the bird landed on the block's top face.
+    """
+    pen_left   = (bird.x + bird.radius) - block.left
+    pen_right  = block.right - (bird.x - bird.radius)
+    pen_top    = (bird.y + bird.radius) - block.top
+    pen_bottom = block.bottom - (bird.y - bird.radius)
+    min_pen = min(pen_left, pen_right, pen_top, pen_bottom)
+    if min_pen <= 0:
+        return False
+
+    if min_pen == pen_top:
+        bird.y = block.top - bird.radius
+        if bird.vy > 0:
+            bird.vy = -bird.vy * BIRD_BOUNCE
+        bird.vx *= 0.8
+        return True
+    if min_pen == pen_bottom:
+        bird.y = block.bottom + bird.radius
+        if bird.vy < 0:
+            bird.vy = -bird.vy * BIRD_BOUNCE
+    elif min_pen == pen_left:
+        bird.x = block.left - bird.radius
+        if bird.vx > 0:
+            bird.vx = -bird.vx * BIRD_BOUNCE
+    else:
+        bird.x = block.right + bird.radius
+        if bird.vx < 0:
+            bird.vx = -bird.vx * BIRD_BOUNCE
+    return False
+
+
 def bird_hits_ground(bird) -> bool:
     """Check if bird has reached the ground level."""
     return (bird.y + bird.radius) >= FLOOR_Y
