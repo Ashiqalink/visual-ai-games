@@ -76,6 +76,31 @@ so `python play.py duckhunt --headless 900` does what it looks like.
 You can still run a game directly if you prefer - `python Sling/main.py` - but
 then the launcher's overrides are not available.
 
+## Sending it to someone who has no Python
+
+`tools/build_exe.py` freezes the games *and* the engine into a standalone
+build. Whoever you send it to needs no Python, no venv, and no clone of either
+repo - they unzip it and double-click.
+
+```bash
+pip install pyinstaller
+python tools/build_exe.py               # a folder in dist/, ~1.5 GB
+python tools/build_exe.py --onefile     # a single .exe instead
+python tools/build_exe.py --slim        # drop onnxruntime; smaller
+```
+
+Zip `dist/visual-ai-games/` and send that. They run `visual-ai-games.exe` for
+the menu, or `visual-ai-games.exe doctor` if anything looks wrong.
+
+Two things worth knowing before you rely on it:
+
+- **PyInstaller does not cross-compile.** A Windows `.exe` must be built on
+  Windows, a macOS build on macOS.
+- **The folder build is the default on purpose.** `--onefile` re-extracts the
+  whole ~1.5 GB bundle to a temp directory on *every* launch, measured at 30
+  seconds before anything appears. The folder build pays that once and then
+  starts in a few seconds.
+
 ## Games
 
 | Game | Input | Entry point |

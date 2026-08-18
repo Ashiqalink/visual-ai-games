@@ -11,6 +11,12 @@ __pycache__/
 # Build/install logs
 *.log
 
+# PyInstaller output from tools/build_exe.py. The bundle is ~1.5 GB and is a
+# build artifact, not source - rebuild it rather than committing it.
+build/
+dist/
+*.spec
+
 # Node
 node_modules/
 
