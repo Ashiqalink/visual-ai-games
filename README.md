@@ -84,22 +84,30 @@ repo - they unzip it and double-click.
 
 ```bash
 pip install pyinstaller
-python tools/build_exe.py               # a folder in dist/, ~1.5 GB
+python tools/build_exe.py               # a folder in ../releases, ~386 MB
 python tools/build_exe.py --onefile     # a single .exe instead
-python tools/build_exe.py --slim        # drop onnxruntime; smaller
+python tools/build_exe.py --slim        # drop onnxruntime; ~35 MB smaller
+python tools/build_exe.py --output DIR  # somewhere else entirely
 ```
 
-Zip `dist/visual-ai-games/` and send that. They run `visual-ai-games.exe` for
-the menu, or `visual-ai-games.exe doctor` if anything looks wrong.
+Zip the resulting `visual-ai-games/` folder and send that - it compresses to
+about 171 MB. They run `visual-ai-games.exe` for the menu, or
+`visual-ai-games.exe doctor` if anything looks wrong.
 
-Two things worth knowing before you rely on it:
+Things worth knowing before you rely on it:
 
+- **Nothing is written inside the repo.** The build defaults to `../releases`
+  and deletes its intermediates, so a working tree you use every day is left
+  exactly as it was. This is meant to be a rare, one-off act.
 - **PyInstaller does not cross-compile.** A Windows `.exe` must be built on
   Windows, a macOS build on macOS.
 - **The folder build is the default on purpose.** `--onefile` re-extracts the
-  whole ~1.5 GB bundle to a temp directory on *every* launch, measured at 30
-  seconds before anything appears. The folder build pays that once and then
-  starts in a few seconds.
+  whole bundle to a temp directory on *every* launch, measured at 30 seconds
+  before anything appears. The folder build pays that once and then starts in
+  a few seconds.
+- **Windows SmartScreen will flag it.** It is an unsigned executable off the
+  internet: "Windows protected your PC" -> More info -> Run anyway. Tell
+  whoever you send it to, or they will assume it is broken.
 
 ## Games
 

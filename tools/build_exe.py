@@ -5,12 +5,18 @@ The point is a build you can hand to someone who has no Python, no venv, and
 no clone of either repo: they run one file and get the menu. The engine ships
 inside the bundle, so there is no sibling folder to find.
 
-    python tools/build_exe.py                  build it (a folder, in dist/)
+    python tools/build_exe.py                  build it (a folder, in ../releases)
     python tools/build_exe.py --onefile        a single .exe instead
     python tools/build_exe.py --slim           drop onnxruntime (much smaller)
+    python tools/build_exe.py --output DIR     somewhere else entirely
 
-The result lands in dist/. Build it on the platform you are shipping to -
-PyInstaller does not cross-compile, so a Windows .exe needs a Windows build.
+Nothing is written inside the repo. This is a rare, one-off act and the
+bundle is a few hundred megabytes; it defaults to ../releases so a working
+tree you use every day stays exactly as it was. Intermediates go to
+<output>/.build and are deleted once the build succeeds.
+
+Build it on the platform you are shipping to - PyInstaller does not
+cross-compile, so a Windows .exe needs a Windows build.
 
 Two things this has to get right, and which are easy to get wrong:
 
@@ -112,7 +118,14 @@ def main(argv: list[str]) -> int:
                         help="a single .exe: easier to send, ~30 s slower every launch")
     parser.add_argument("--slim", action="store_true",
                         help="drop onnxruntime; avatarcatch falls back to an uncut crop")
-    parser.add_argument("--clean", action="store_true", help="wipe build/ and dist/ first")
+    # Everything lands outside the repo by default. This build is a rare,
+    # one-off act; the ~400 MB bundle and ~40 MB of intermediates have no
+    # business sitting in a working tree you use every day, gitignored or
+    # not - they slow searches and editor indexing and clutter the folder.
+    parser.add_argument("--output", metavar="DIR", default=str(ROOT.parent / "releases"),
+                        help="where the build lands (default: ../releases, outside the repo)")
+    parser.add_argument("--keep-intermediates", action="store_true",
+                        help="keep the work directory instead of deleting it after a good build")
     args = parser.parse_args(argv)
 
     if not ENGINE_SRC.is_dir():
@@ -120,9 +133,10 @@ def main(argv: list[str]) -> int:
               file=sys.stderr)
         return 1
 
-    if args.clean:
-        for path in (ROOT / "build", ROOT / "dist"):
-            shutil.rmtree(path, ignore_errors=True)
+    output = Path(args.output).resolve()
+    work = output / ".build"
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True, exist_ok=True)
 
     sep = ";" if sys.platform == "win32" else ":"
 
@@ -141,6 +155,12 @@ def main(argv: list[str]) -> int:
         str(ROOT / "play.py"),
         # The engine, as an importable package rather than loose data.
         "--paths", str(ENGINE_SRC),
+        # Keep PyInstaller's three outputs - the bundle, the work directory
+        # and the generated .spec - out of the repo. Left to itself it writes
+        # dist/, build/ and a .spec into the current directory.
+        "--distpath", str(output),
+        "--workpath", str(work),
+        "--specpath", str(work),
     ]
 
     for module in HIDDEN:
@@ -171,7 +191,7 @@ def main(argv: list[str]) -> int:
     # fresh clone - and pointing --add-data straight at the source tree
     # shipped that entire virtualenv inside the bundle. It was 71% of the
     # build. Stage a copy without the junk and bundle that instead.
-    staging = ROOT / "build" / "staged-games"
+    staging = work / "staged-games"
     shutil.rmtree(staging, ignore_errors=True)
     staging.mkdir(parents=True, exist_ok=True)
     skip = shutil.ignore_patterns(
@@ -194,10 +214,13 @@ def main(argv: list[str]) -> int:
         return result
 
     if args.onefile:
-        target = ROOT / "dist" / (NAME + (".exe" if sys.platform == "win32" else ""))
+        target = output / (NAME + (".exe" if sys.platform == "win32" else ""))
     else:
-        target = ROOT / "dist" / NAME
+        target = output / NAME
         prune(target / "_internal")
+
+    if not args.keep_intermediates:
+        shutil.rmtree(work, ignore_errors=True)
     if target.exists():
         size = (sum(f.stat().st_size for f in target.rglob("*") if f.is_file())
                 if target.is_dir() else target.stat().st_size)
