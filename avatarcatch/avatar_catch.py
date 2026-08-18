@@ -9,6 +9,14 @@ the hand, but the capture is not — see main() for why the face runs it. Everyt
 is placeholder catch-the-falling-shapes gameplay — the point being tested is
 the capture -> matte -> reuse pipeline, not this game design.
 
+What happens to the photo: nothing leaves this process. The capture lives in
+memory as `capture_rgba` and the sprite built from it, both dropped on R and
+gone when the window closes — there is no imwrite anywhere in this file and no
+upload. Capture is on SPACE rather than on a timer that fires the moment a face
+appears, because this points a camera at whoever is in front of it and a
+countdown nobody started is not consent. The one thing that does reach the
+network is the MODNet weight download on first use, and only then.
+
 Matting backend is swappable via MATTE_BACKEND below:
     "modnet" — portrait matting via visual_ai.matting (MODNet on onnxruntime).
                Best edge on hair, and the reason this harness exists. Weights
@@ -191,6 +199,7 @@ def main():
 
     STATE_CAPTURE, STATE_PLAYING, STATE_GAMEOVER = "capture", "playing", "gameover"
     state = STATE_CAPTURE
+    consented = False  # SPACE arms the countdown; nothing is grabbed before it
     hold_start = None
     hold_anchor = None  # face centre the countdown started at, in canvas px
     avatar = None  # RGBA sprite, set once capture completes
@@ -252,7 +261,12 @@ def main():
                                int((face_box[1] + face_box[3]) * scale_y)),
                               (0, 255, 255), 2)
 
-            if face_center is None:
+            # SPACE gates the countdown, and the countdown is the only thing
+            # that reaches for a frame. The face box above is drawn either way
+            # so the player can frame themselves *before* deciding — showing a
+            # preview is not the same as taking a photo, and only one of the
+            # two needs asking.
+            if not consented or face_center is None:
                 hold_start = None
                 hold_anchor = None
             elif hold_start is None or np.hypot(face_center[0] - hold_anchor[0],
@@ -260,19 +274,36 @@ def main():
                 hold_start = time.time()
                 hold_anchor = face_center
 
-            draw_text(canvas, "Look at the camera and hold still",
-                      W // 2 - 240, 40, 0.8)
+            if not consented:
+                draw_text(canvas, "Press SPACE to take your photo", W // 2 - 250, 40, 0.9)
+                draw_text(canvas, "Q to quit without one", W // 2 - 130, 70, 0.6, (180, 180, 180), 1)
+            else:
+                draw_text(canvas, "Look at the camera and hold still",
+                          W // 2 - 240, 40, 0.8)
 
             if hold_start is not None:
                 elapsed = time.time() - hold_start
                 remaining = max(0.0, HOLD_STILL_SECONDS - elapsed)
                 draw_text(canvas, f"Capturing in {remaining:0.1f}s", W // 2 - 120, H // 2, 1.2, (0, 255, 255))
                 if elapsed >= HOLD_STILL_SECONDS and cam_frame is not None:
+                    # matte_frame blocks, and on the very first run it blocks
+                    # for seconds while 25 MB of MODNet weights download. Paint
+                    # the reason before handing over the thread, or the window
+                    # just freezes at "Capturing in 0.0s" with nothing to read.
+                    draw_text(canvas, "Cutting you out...", W // 2 - 130, H // 2 + 60, 0.9, (0, 255, 255))
+                    draw_text(canvas, "first run also downloads 25 MB of matting weights",
+                              W // 2 - 250, H // 2 + 90, 0.55, (150, 200, 255), 1)
+                    cv2.imshow(TITLE, canvas)
+                    cv2.waitKey(1)
+
                     capture_rgba, matted = matte_frame(cam_frame)
                     avatar, matte_note = build_sprite(capture_rgba, matted, lighting)
                     state = STATE_PLAYING
-            else:
+            elif consented:
                 draw_text(canvas, "Waiting for a face...", W // 2 - 140, H // 2, 0.9, (0, 180, 255))
+
+            draw_text(canvas, "Your photo stays on this machine - never saved to disk, never uploaded",
+                      20, H - 20, 0.5, (150, 220, 150), 1)
 
         elif state == STATE_PLAYING:
             frame_count += 1
@@ -307,19 +338,26 @@ def main():
             blit_rgba(canvas, avatar, W // 2, H // 2 - 60)
             draw_text(canvas, "GAME OVER", W // 2 - 130, H // 2 + 80, 1.4, (0, 0, 255), 3)
             draw_text(canvas, f"Final score: {score}", W // 2 - 100, H // 2 + 120, 0.9)
-            draw_text(canvas, "Press 'R' to recapture and play again", W // 2 - 190, H // 2 + 150, 0.7)
+            draw_text(canvas, "Press 'R' to discard this photo and start over",
+                      W // 2 - 220, H // 2 + 150, 0.7)
 
         cv2.imshow(TITLE, canvas)
         key = cv2.waitKey(16) & 0xFF
         if key in (27, ord('q')):
             break
+        elif key == ord(' ') and state == STATE_CAPTURE:
+            consented = True
         elif key == ord('l') and capture_rgba is not None:
             # Re-render the shot already taken; the matte is the expensive
             # part and it has not changed, so this is instant.
             lighting = not lighting
             avatar, matte_note = build_sprite(capture_rgba, matted, lighting)
         elif key == ord('r'):
+            # Dropping both the sprite and the matte behind it is what makes
+            # "recapture" also mean "discard the old photo" — the previous
+            # shot is unreachable from here on, not just unused.
             state = STATE_CAPTURE
+            consented = False
             hold_start = None
             hold_anchor = None
             avatar = None
