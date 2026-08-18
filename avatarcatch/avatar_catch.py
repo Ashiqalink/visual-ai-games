@@ -44,7 +44,8 @@ from engine_bootstrap import ensure_engine
 ensure_engine()
 
 from visual_ai import VisionPipeline, cut_out_person
-from visual_ai.imaging import bgr_to_rgb, pad_to, remove_background, resize as resize_rgba
+from visual_ai.imaging import (bgr_to_rgb, clipped_fraction, normalize_lighting,
+                               pad_to, remove_background, resize as resize_rgba)
 
 W, H = 800, 600
 TITLE = "Avatar Catch (test harness)"
@@ -53,6 +54,7 @@ MATTE_BACKEND = "modnet"  # "modnet" | "rembg" — modnet needs weights, see mod
 
 HOLD_STILL_SECONDS = 3.0
 STILL_RADIUS = 45  # px of face drift that restarts the countdown
+LIGHTING_STRENGTH = 0.85  # 0 disables the exposure fix, 1 applies it in full
 AVATAR_SIZE = 140
 
 CATCH_SPEED_MIN = 4
@@ -70,29 +72,52 @@ def _center_crop_rgba(bgr_frame: np.ndarray) -> np.ndarray:
     return np.dstack([rgb, np.full(rgb.shape[:2], 255, dtype=np.uint8)])
 
 
-def capture_avatar(bgr_frame: np.ndarray) -> tuple[np.ndarray, str]:
+def matte_frame(bgr_frame: np.ndarray) -> tuple[np.ndarray, bool]:
     """
-    One still frame in, an (AVATAR_SIZE x AVATAR_SIZE RGBA cutout, label) out.
+    One still frame in, a full-resolution (RGBA cutout, matte worked) out.
 
-    The label says which backend actually ran, and the caller puts it on
-    screen. That matters more than it looks: when the fallback fires, the
-    sprite is an uncut opaque rectangle, and a rectangle is exactly what a
-    working matte of someone filling the frame could plausibly look like at a
-    glance. Reporting it only on stdout — which nobody reads while a game
-    window has focus — makes a missing dependency read as a broken feature.
+    Kept separate from build_sprite so the harness can re-render the same shot
+    with different lighting settings without paying for the matte again —
+    comparing treatments on one capture is the entire point of a testbed, and
+    re-matting per toggle would cost 0.3s each time.
     """
     rgb = bgr_to_rgb(bgr_frame)
     try:
         if MATTE_BACKEND == "modnet":
-            rgba = cut_out_person(rgb)
-        else:
-            rgba = remove_background(rgb, model="isnet-general-use")
+            return cut_out_person(rgb), True
+        return remove_background(rgb, model="isnet-general-use"), True
     except RuntimeError as exc:
         print(f"[avatar_catch] {MATTE_BACKEND} matting unavailable ({exc}); "
               f"falling back to a plain center crop with no matte.")
-        # Already square and opaque, so there is nothing to crop to.
-        return (resize_rgba(_center_crop_rgba(bgr_frame), AVATAR_SIZE, AVATAR_SIZE),
+        return _center_crop_rgba(bgr_frame), False
+
+
+def build_sprite(rgba: np.ndarray, matted: bool,
+                 lighting: bool = True) -> tuple[np.ndarray, str]:
+    """
+    A matted capture in, an (AVATAR_SIZE x AVATAR_SIZE sprite, HUD label) out.
+
+    The label says which backend actually ran. That matters more than it
+    looks: when the fallback fires, the sprite is an uncut opaque rectangle,
+    and a rectangle is exactly what a working matte of someone filling the
+    frame could plausibly look like at a glance. Reporting it only on stdout —
+    which nobody reads while a game window has focus — makes a missing
+    dependency read as a broken feature.
+    """
+    if not matted:
+        # Already square and opaque, so there is nothing to crop or light.
+        return (resize_rgba(rgba, AVATAR_SIZE, AVATAR_SIZE),
                 f"{MATTE_BACKEND} unavailable - uncut crop (see console)")
+
+    alpha = rgba[..., 3]
+    blown = clipped_fraction(rgba, mask=alpha)
+    if lighting:
+        # Fix the lighting *after* matting, masked to the cutout. Webcams
+        # meter for the whole scene, so a window behind the player buys a face
+        # that is half blown out; correcting before the cut would spend the
+        # correction on the background, and the background is what we are
+        # throwing away.
+        rgba = normalize_lighting(rgba, strength=LIGHTING_STRENGTH, mask=alpha)
 
     # pad_to trims to what the matte actually kept and fits that on a square
     # canvas, so the player is not squashed by the frame's 4:3 aspect. It
@@ -100,7 +125,21 @@ def capture_avatar(bgr_frame: np.ndarray) -> tuple[np.ndarray, str]:
     # background colour into the soft hair edges MODNet is here to get right.
     sprite = pad_to(rgba, AVATAR_SIZE, fit=1.0)
     kept = float(sprite[..., 3].mean()) / 255.0
-    return sprite, f"{MATTE_BACKEND} matte - {kept:.0%} of the sprite kept"
+    note = (f"{MATTE_BACKEND} matte - {kept:.0%} kept, "
+            f"lighting {'on' if lighting else 'off'} (L)")
+    if blown > 0.02:
+        # Clipped pixels recorded nothing, so this is the one part no
+        # correction can touch. Say so rather than leaving the player
+        # wondering why the bright patch stayed bright.
+        note += f", {blown:.0%} blown out - dim the light behind you"
+    return sprite, note
+
+
+def capture_avatar(bgr_frame: np.ndarray,
+                   lighting: bool = True) -> tuple[np.ndarray, str]:
+    """Matte and render in one call, for callers that will not re-render."""
+    rgba, matted = matte_frame(bgr_frame)
+    return build_sprite(rgba, matted, lighting)
 
 
 def draw_text(img, text, x, y, size=1.0, color=(255, 255, 255), thickness=2):
@@ -154,7 +193,10 @@ def main():
     state = STATE_CAPTURE
     hold_start = None
     hold_anchor = None  # face centre the countdown started at, in canvas px
-    avatar = None  # RGBA, set once capture completes
+    avatar = None  # RGBA sprite, set once capture completes
+    capture_rgba = None  # the full-res matte behind it, kept for re-rendering
+    matted = False
+    lighting = True  # L toggles the exposure fix against the same capture
     matte_note = ""  # which backend produced `avatar`, shown on the HUD
 
     paddle_x = W / 2.0
@@ -226,7 +268,8 @@ def main():
                 remaining = max(0.0, HOLD_STILL_SECONDS - elapsed)
                 draw_text(canvas, f"Capturing in {remaining:0.1f}s", W // 2 - 120, H // 2, 1.2, (0, 255, 255))
                 if elapsed >= HOLD_STILL_SECONDS and cam_frame is not None:
-                    avatar, matte_note = capture_avatar(cam_frame)
+                    capture_rgba, matted = matte_frame(cam_frame)
+                    avatar, matte_note = build_sprite(capture_rgba, matted, lighting)
                     state = STATE_PLAYING
             else:
                 draw_text(canvas, "Waiting for a face...", W // 2 - 140, H // 2, 0.9, (0, 180, 255))
@@ -270,11 +313,17 @@ def main():
         key = cv2.waitKey(16) & 0xFF
         if key in (27, ord('q')):
             break
+        elif key == ord('l') and capture_rgba is not None:
+            # Re-render the shot already taken; the matte is the expensive
+            # part and it has not changed, so this is instant.
+            lighting = not lighting
+            avatar, matte_note = build_sprite(capture_rgba, matted, lighting)
         elif key == ord('r'):
             state = STATE_CAPTURE
             hold_start = None
             hold_anchor = None
             avatar = None
+            capture_rgba = None
             matte_note = ""
             shapes = []
             score = 0
