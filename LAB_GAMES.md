@@ -45,6 +45,30 @@ The card itself is `instructions.py` at the repo root rather than part of this
 harness, because Sling, flappy and punchy show the same one and are no part of
 the harness.
 
+## Is it tracking?
+
+Every windowed run carries a `HAND TRACKING` badge in the bottom-right corner,
+drawn by the driver so all seven get it without a line of their own. A game that
+ignores you and a game that cannot see your hand look identical from the
+player's chair, and the fix for each is different:
+
+| badge | what it means |
+| --- | --- |
+| `STARTING` | no payload has arrived yet — the camera is still warming up |
+| `NO CAMERA` | the camera never opened; the pipeline is emitting simulated input |
+| `ON` / `ON x2` | a hand was seen this frame, and how many |
+| `LOST` | no hand for up to 1.5 s |
+| `OFF` | no hand beyond that, or none seen at all |
+
+The state hangs off one clock — time since a payload last reported a hand — so a
+single dropped MediaPipe detection does not strobe the badge, and a pipeline
+thread that stalls or dies flips it off rather than leaving it stuck on `ON`.
+The session summary a windowed run prints on exit carries the same figure over
+the whole run as `hand_tracked_pct`.
+
+Headless runs draw no badge; they already report tracking through their own
+metrics.
+
 ## Headless mode
 
 `--headless N` runs N frames with no window and no camera, driving the game from

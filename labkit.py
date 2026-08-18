@@ -13,6 +13,11 @@ A windowed run opens on a how-to-play card built from the game's own `goal`,
 which shape their hand should be in has no way to discover it. Any key starts,
 `H` brings it back, `--no-instructions` skips it. Headless runs never show it.
 
+It also carries a `HAND TRACKING` badge in the bottom-right corner for the same
+reason: a game that ignores you and a game that cannot see your hand look the
+same from the player's chair, so the driver says which one it is — including
+when there is no camera at all and the pipeline is quietly simulating.
+
 The headless mode is the point. It drives the game from `ScriptedPipeline`,
 which speaks the same queue contract as `VisionPipeline` but emits payloads from
 a deterministic motion script, so a run is repeatable and a regression shows up
@@ -109,6 +114,133 @@ DRIVER_KEYS = (
 )
 
 
+
+
+# ── Tracking status ───────────────────────────────────────────────────────────
+
+class TrackingStatus:
+    """
+    Whether hand tracking is actually live, tracked frame by frame.
+
+    A gesture game that stops responding looks identical whether the hand left
+    the frame, the lighting killed the detector, or the camera never opened and
+    the pipeline quietly fell back to simulated mode. The player has no way to
+    tell those apart from inside the game, so the driver says which it is.
+
+    Three things are distinguished, because the fix for each is different:
+
+    * no camera            — nothing to track; the pipeline is simulating
+    * camera, no hand      — put a hand in frame
+    * hand seen this frame — tracking is live
+
+    The state is read off one clock — time since a payload last reported a hand
+    — rather than off the last payload's hand count, which covers two cases at
+    once. MediaPipe misses the odd frame at the edge of the view, and a badge
+    that strobed on every one of those would be noise, so a hand counts as held
+    for `HOLD` seconds after it was last seen. And the render loop spins faster
+    than the 30 fps pipeline, so most frames drain an empty queue; reading the
+    last payload's count instead would leave the badge stuck on ON if the
+    pipeline thread stalled or died, which is precisely the failure the badge
+    exists to show.
+    """
+
+    HOLD = 0.35             # seconds a hand stays "on" after its last sighting
+    LOST_GRACE = 1.5        # seconds of no hand before "lost" becomes "off"
+
+    #: state -> (label, BGR colour)
+    _BADGE = {
+        "start": ("STARTING", (150, 150, 160)),
+        "sim":   ("NO CAMERA", (215, 175, 120)),
+        "on":    ("ON", (110, 235, 130)),
+        "lost":  ("LOST", (90, 200, 250)),
+        "off":   ("OFF", (110, 110, 235)),
+    }
+
+    def __init__(self):
+        self.saw_payload = False
+        self.live_camera = False
+        self.hand_count = 0
+        # Starts at infinity, not zero: a hand that has never been seen must not
+        # spend the first HOLD seconds of the session reading as tracked.
+        self.since_seen = math.inf
+        self.frames = 0
+        self.seen_frames = 0
+
+    def update(self, pipeline, payload, dt: float) -> None:
+        """
+        Fold one frame in. `payload` may be None when the queue had nothing new,
+        which is not the same as "no hand" — the clock still advances, but the
+        frame is not counted either way.
+        """
+        # Read the camera flag off the pipeline rather than off construction:
+        # VisionPipeline only learns whether the camera opened once its thread
+        # runs, so asking too early reports a failure that never happened.
+        self.live_camera = bool(getattr(pipeline, "camera_available", False))
+        self.since_seen += dt
+        if payload is None:
+            return
+
+        self.saw_payload = True
+        count = payload.get("hand_count")
+        if count is None:
+            count = 1 if payload.get("hand_visible") else 0
+        self.hand_count = int(count)
+        self.frames += 1
+        if self.hand_count > 0:
+            self.seen_frames += 1
+            self.since_seen = 0.0
+
+    @property
+    def state(self) -> str:
+        if not self.saw_payload:
+            return "start"
+        if not self.live_camera:
+            return "sim"
+        if self.since_seen < self.HOLD:
+            return "on"
+        return "lost" if self.since_seen < self.LOST_GRACE else "off"
+
+    @property
+    def tracked_fraction(self) -> float:
+        return self.seen_frames / self.frames if self.frames else 0.0
+
+    def badge(self) -> tuple[str, tuple[int, int, int]]:
+        text, colour = self._BADGE[self.state]
+        if self.state == "on" and self.hand_count > 1:
+            text = f"{text} x{self.hand_count}"
+        return text, colour
+
+
+def draw_tracking_badge(img, status: TrackingStatus, margin: int = 14) -> None:
+    """
+    Bottom-right badge reading `HAND TRACKING <state>`.
+
+    Bottom-right because it is the one corner none of the seven games draw in —
+    the driver has no way to ask a game where its HUD is, so it has to pick a
+    spot that is free in all of them.
+    """
+    label, colour = status.badge()
+    head = "HAND TRACKING"
+    (hw, _), _ = cv2.getTextSize(head, FONT, 0.45, 1)
+    (lw, _), _ = cv2.getTextSize(label, FONT, 0.5, 1)
+
+    dot_w, gap = 20, 10
+    w = dot_w + hw + gap + lw + 16
+    h = 28
+    x = img.shape[1] - margin - w
+    y = img.shape[0] - margin - h
+
+    draw_panel(img, x, y, w, h, alpha=0.62, color=(16, 14, 22))
+    cv2.rectangle(img, (int(x), int(y)), (int(x + w), int(y + h)),
+                  tuple(int(c * 0.55) for c in colour), 1)
+
+    cy = int(y + h / 2)
+    # Hollow while nothing is being tracked, so the state is readable at a
+    # glance and without relying on colour alone.
+    cv2.circle(img, (int(x + 12), cy), 5, colour,
+               -1 if status.state == "on" else 1, cv2.LINE_AA)
+    draw_text(img, head, x + dot_w + 4, cy + 5, 0.45, (185, 190, 200), 1)
+    draw_text(img, label, x + dot_w + 4 + hw + gap, cy + 5, 0.5, colour, 1)
 
 
 # ── Frame timing ──────────────────────────────────────────────────────────────
@@ -603,6 +735,7 @@ def _run_windowed(game: LabGame, args) -> int:
 
     clock = FrameClock()
     canvas = np.zeros((game.height, game.width, 3), dtype=np.uint8)
+    tracking = TrackingStatus()
     dropped_total = 0
     running = True
 
@@ -618,6 +751,10 @@ def _run_windowed(game: LabGame, args) -> int:
             payload, dropped = drain(q)
             dropped_total += dropped
             dt = clock.tick(record=not showing_help)
+            # Updated behind the card too: the badge is how the player checks
+            # the camera found their hand before play starts, which is exactly
+            # when the card is still up.
+            tracking.update(pipeline, payload, dt)
 
             if payload is not None and not showing_help:
                 game.update(payload, dt)
@@ -626,6 +763,7 @@ def _run_windowed(game: LabGame, args) -> int:
 
             draw_text(canvas, f"{clock.fps:5.1f} fps", game.width - 150, 30,
                       0.6, (150, 200, 255), 1)
+            draw_tracking_badge(canvas, tracking)
             if showing_help:
                 draw_card(canvas, game.title, game.goal, game.controls,
                           tuple(game.keys) + DRIVER_KEYS)
@@ -659,6 +797,9 @@ def _run_windowed(game: LabGame, args) -> int:
 
     summary = clock.summary()
     summary["dropped_frames"] = dropped_total
+    # The same number the badge was showing, over the whole session — a run that
+    # felt unresponsive is usually one that tracked a hand 40% of the time.
+    summary["hand_tracked_pct"] = round(tracking.tracked_fraction * 100.0, 1)
     print(json.dumps({"game": game.title, "session": summary,
                       "metrics": game.metrics()}, indent=2, default=_jsonable))
     return 0
