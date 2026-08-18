@@ -62,24 +62,27 @@ def ensure_engine():
             import visual_ai  # noqa: F401
             return
         except ImportError as exc:
-            # The folder exists but the package still won't load. The usual
-            # cause is the compiled engine_core extension being built for a
-            # different Python version or platform than the one running now.
+            # The folder exists but the package still won't load. This is not
+            # the C++ extension: engine_core is optional and visual_ai falls
+            # back to PythonFallbackEngine when it is absent. So the cause is
+            # almost always a missing third-party dependency, or a Python
+            # version mediapipe has no wheels for.
             _fail(
                 'Found the engine at:\n'
                 '    {path}\n'
                 'but importing it failed:\n'
                 '    {exc}\n\n'
-                'This is usually the compiled C++ extension (engine_core) not\n'
-                'matching your interpreter. The checked-in binary is built for\n'
-                'CPython 3.12 on Windows x86-64; you are running Python {ver} on\n'
-                '{plat}. Rebuild it from the engine repo with:\n'
-                '    pip install -e "{path_parent}"\n'
-                '(that needs a C++ compiler installed).'.format(
+                'You are running Python {ver} on {plat}.\n\n'
+                'The usual causes, in order:\n'
+                '  1. The dependencies are not installed in THIS interpreter:\n'
+                '         pip install -r requirements.txt\n'
+                '  2. Python {ver} is outside the supported 3.9-3.12 range.\n'
+                '     mediapipe publishes no wheels for 3.13+, so make the\n'
+                '     venv with a 3.12 interpreter instead.\n\n'
+                'Run `python play.py doctor` for a full report.'.format(
                     path=path, exc=exc,
                     ver='{}.{}'.format(*sys.version_info[:2]),
                     plat=sys.platform,
-                    path_parent=os.path.dirname(path),
                 )
             )
 

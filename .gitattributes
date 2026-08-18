@@ -1,0 +1,11 @@
+# The POSIX launcher shim must be checked out with LF endings. With CRLF the
+# kernel reads the shebang as "/bin/sh\r" and every macOS/Linux user gets
+# "bad interpreter: no such file or directory" from `./play`.
+play text eol=lf
+*.sh text eol=lf
+
+# The Windows shim is the mirror case: cmd.exe wants CRLF.
+*.cmd text eol=crlf
+
+# Everything else: normalise in the repo, check out native.
+* text=auto

@@ -1,9 +1,24 @@
 #!/bin/sh
-# Convenience shim so `./play sling` works on macOS and Linux.
+# Convenience shim so `./play sling` works on macOS and Linux - and from a
+# POSIX shell on Windows (Git Bash, MSYS), where a venv puts its interpreter in
+# Scripts/ rather than bin/.
+#
 # Prefers the repo's own .venv, because that is where requirements.txt is meant
-# to be installed; falls back to python3 on PATH.
+# to be installed.
 HERE="$(cd "$(dirname "$0")" && pwd)"
-if [ -x "$HERE/.venv/bin/python" ]; then
-    exec "$HERE/.venv/bin/python" "$HERE/play.py" "$@"
-fi
-exec python3 "$HERE/play.py" "$@"
+
+for candidate in "$HERE/.venv/bin/python" "$HERE/.venv/Scripts/python.exe"; do
+    if [ -x "$candidate" ]; then
+        exec "$candidate" "$HERE/play.py" "$@"
+    fi
+done
+
+for candidate in python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+        exec "$candidate" "$HERE/play.py" "$@"
+    fi
+done
+
+echo "play: no Python interpreter found. Install Python 3.9-3.12, then:" >&2
+echo "    python -m venv .venv && pip install -r requirements.txt" >&2
+exit 1

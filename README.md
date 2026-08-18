@@ -4,6 +4,78 @@ A collection of camera-controlled games built on the
 [visual-ai-game-engine](https://github.com/Ashiqalink/visual-ai-game-engine).
 You play them with your hands and body in front of a webcam - no controller.
 
+## Quick start
+
+You need **Python 3.9-3.12**. Not 3.13: mediapipe, which does the hand
+tracking, publishes no wheels for it and the install will fail. Check with
+`python --version` before anything else.
+
+```bash
+# 1. Clone both repos side by side. The games import the engine from a
+#    sibling folder, so cloning this one alone is not enough.
+git clone https://github.com/Ashiqalink/visual-ai-game-engine.git "visual ai game engine"
+git clone https://github.com/Ashiqalink/visual-ai-games.git "visual ai games"
+
+# 2. Install the dependencies.
+cd "visual ai games"
+python -m venv .venv
+.venv\Scripts\activate            # Windows
+source .venv/bin/activate         # macOS / Linux
+pip install -r requirements.txt
+
+# 3. Check the machine is ready, then play.
+python play.py doctor
+python play.py
+```
+
+`play.py doctor` reports your Python version, every dependency, whether the
+engine was found, which physics engine you got, and which webcams respond. If
+something is wrong it says what and how to fix it - run it first.
+
+You do **not** need to install the engine. `engine_bootstrap.ensure_engine()`
+finds the sibling clone on `sys.path` at startup. Installing it is optional and
+only adds the compiled C++ physics core:
+
+```bash
+pip install -e "../visual ai game engine"
+```
+
+That build needs a C++ compiler, and **it is fine if you don't have one** - the
+install prints why it skipped the extension and carries on. The games then run
+on `PythonFallbackEngine`, which has the same API and the same physics, just
+slower. `python play.py doctor` tells you which one you ended up with.
+
+If you keep the engine somewhere other than a sibling folder, point at it:
+
+```bash
+set VISUAL_AI_ENGINE=C:\path\to\engine     # Windows
+export VISUAL_AI_ENGINE=/path/to/engine    # macOS / Linux
+```
+
+## Running
+
+`play.py` is the entry point for everything. It finds the engine, puts it on
+the child's `PYTHONPATH`, and can override settings a game hard-codes.
+
+```bash
+python play.py                    # interactive menu
+python play.py list               # every title, and whether it will run
+python play.py doctor             # Python, deps, engine, cameras
+python play.py sling              # run a game
+python play.py info sling         # its controls, without launching
+python play.py punchy --camera 1  # a different webcam
+python play.py sling --width 1920 --height 1080 --smooth 0.3
+python play.py flappy --tof sim   # force simulated ToF depth ("sim" | "off")
+python play.py labtests           # the headless regression suite
+```
+
+On Windows `play sling` works too (via `play.cmd`); on macOS and Linux it is
+`./play sling`. Any flag the launcher does not own goes straight to the game,
+so `python play.py duckhunt --headless 900` does what it looks like.
+
+You can still run a game directly if you prefer - `python Sling/main.py` - but
+then the launcher's overrides are not available.
+
 ## Games
 
 | Game | Input | Entry point |
@@ -11,6 +83,13 @@ You play them with your hands and body in front of a webcam - no controller.
 | **Sling** | Hand signs - close a fist to grab the bird, open your hand to fire | `Sling/main.py` |
 | **flappy** | Finger tracking - raise and lower your index finger to fly | `flappy/tof_flappy.py` |
 | **punchy** | Time-of-Flight depth - punch toward the camera to hit targets | `punchy/tof_punch.py` |
+| **avatarcatch** | Your own webcam portrait, cut out and used as the paddle | `avatarcatch/avatar_catch.py` |
+
+Plus seven **lab games** - `duckhunt`, `depthlanes`, `signduel`, `sculptor`,
+`cradle`, `conductor`, `depthpong` - which each push one part of the SDK until
+it complains and report what they measured, not just what you scored. Each also
+runs headless off scripted input, so they double as the regression suite. See
+[LAB_GAMES.md](LAB_GAMES.md).
 
 ### Controls
 
@@ -35,59 +114,19 @@ independent smoothing systems and they are worth feeling separately:
 | `L` | Toggle the ToF depth stabilizer, which runs a 3-second hold-still calibration. |
 | `X` | Cancel a calibration already in progress. |
 
-## Setup
+Every game needs a webcam, and `Q` or `ESC` quits. With no camera present the
+pipeline runs in simulated mode rather than crashing, so a headless machine can
+still run the suite.
 
-The games import the engine from a **sibling directory**, not from a package
-index. Clone both repos next to each other, or nothing will import:
+## Troubleshooting
 
-```
-your-folder/
-├── visual ai game engine/    <- clone this too
-└── visual ai games/          <- this repo
-```
-
-```bash
-git clone https://github.com/Ashiqalink/visual-ai-game-engine.git "visual ai game engine"
-git clone https://github.com/Ashiqalink/visual-ai-games.git "visual ai games"
-
-cd "visual ai games"
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-pip install -r Sling/requirements.txt
-```
-
-If you keep the engine somewhere else, point at it with an environment
-variable instead:
-
-```bash
-set VISUAL_AI_ENGINE=C:\path\to\engine    # Windows
-export VISUAL_AI_ENGINE=/path/to/engine   # macOS/Linux
-```
-
-Every game calls `ensure_engine()` from `engine_bootstrap.py` at startup. It
-locates the engine and, if it can't, exits with a message saying exactly what
-to clone and where - rather than a bare `ModuleNotFoundError`.
-
-### About the compiled extension
-
-The engine includes a C++ extension (`engine_core`, built with pybind11). The
-binary checked into that repo is built for **CPython 3.12 on Windows x86-64**.
-On any other Python version or platform you will need to rebuild it, which
-requires a C++ compiler:
-
-```bash
-pip install -e "../visual ai game engine"
-```
-
-## Running
-
-```bash
-python Sling/main.py
-python flappy/tof_flappy.py
-python punchy/tof_punch.py
-```
-
-Each game needs a webcam. Press `q` to quit.
+| Symptom | Cause |
+| --- | --- |
+| `ERROR: Could not find a version that satisfies the requirement mediapipe` | Python 3.13+. Make the venv with a 3.12 interpreter. |
+| "Cannot start: the visual_ai engine is unavailable" | The engine repo is not a sibling folder. Clone it, or set `VISUAL_AI_ENGINE`. |
+| Install warns the C++ extension was not built | Expected without a compiler. Harmless - you get the Python fallback. |
+| The window opens but nothing tracks | Another app holds the webcam, or the wrong index. `python play.py doctor` lists what responds; `--camera N` picks one. |
+| Tracking is jittery at rest | Press `K`; if depth is the problem press `L` and hold still for 3 seconds. |
 
 ## What these games do with your camera
 
