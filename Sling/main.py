@@ -124,11 +124,26 @@ def _draw_system_metrics(canvas: np.ndarray):
     cv2.rectangle(canvas, (10, 10), (310, 42), (50, 200, 255), 1)
     cv2.putText(canvas, text, (20, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2, cv2.LINE_AA)
 
-def _paste_cam(canvas: np.ndarray, cam_frame: np.ndarray):
-    """Paste a resized, mirrored camera preview into the top-right corner."""
+_cached_preview: np.ndarray | None = None
+
+
+def _paste_cam(canvas: np.ndarray, cam_frame: np.ndarray, new_frame: bool = True):
+    """
+    Paste a resized, mirrored camera preview into the top-right corner.
+
+    ``new_frame`` says whether ``cam_frame`` is one the loop has not pasted yet.
+    The render loop runs faster than the camera delivers, so re-scaling the same
+    frame on every pass was repeating identical work; the scaled copy is kept and
+    reused until a new payload arrives. The caller owns that signal rather than
+    this function comparing frames, so a pipeline that ever reuses its capture
+    buffer cannot leave the preview silently frozen.
+    """
+    global _cached_preview
     if cam_frame is None:
         return
-    preview = cv2.resize(cam_frame, (CAM_W, CAM_H))
+    if new_frame or _cached_preview is None:
+        _cached_preview = cv2.resize(cam_frame, (CAM_W, CAM_H))
+    preview = _cached_preview
     # Frame from VisionPipeline is already mirrored, no second flip needed
 
     x0 = FRAME_W - CAM_W - CAM_MARGIN
@@ -176,6 +191,30 @@ def main():
     accumulator = 0.0
     FIXED_DT = 1 / 60.0
 
+    # ── Render pacing ─────────────────────────────────────────────────────
+    # The loop used to have no governor at all: `cv2.waitKey(1)` let it spin at
+    # a few hundred iterations a second while the pipeline delivers 30 payloads
+    # a second, so the same unchanged state was cleared, drawn and blitted
+    # roughly eight times per camera frame. That is where the laptop's heat was
+    # going. Physics runs on its own fixed accumulator below and is unaffected
+    # by how often we draw, so capping the draw rate costs nothing visually.
+    RENDER_DT = 1 / 60.0
+    next_render = time.time()
+
+    def _paced_key() -> int:
+        """
+        Pump highgui, return the pressed key, and wait out the rest of the
+        frame budget. `waitKey` returns as soon as a key arrives, so the longer
+        timeout paces idle frames without adding input latency.
+        """
+        nonlocal next_render
+        wait_ms = int((next_render - time.time()) * 1000.0)
+        key = cv2.waitKey(max(1, wait_ms)) & 0xFF
+        # Re-base rather than accumulate: a frame that overran its budget must
+        # not bank credit and let the next few frames run back-to-back.
+        next_render = max(time.time(), next_render + RENDER_DT)
+        return key
+
     # ToF stabilizer starts off; L toggles it, X cancels an in-progress run.
     tof_stab_on = False
 
@@ -213,6 +252,7 @@ def main():
             except queue.Empty:
                 break
 
+        cam_is_new = latest is not None
         if latest is not None:
             cam_frame = latest["frame"]        # raw camera frame for preview box
             gesture   = latest                 # full payload IS the gesture dict
@@ -231,7 +271,7 @@ def main():
             cv2.putText(canvas, "Starting camera...", (FRAME_W // 2 - 90, FRAME_H - 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (120, 180, 220), 1, cv2.LINE_AA)
             cv2.imshow("Sling", canvas)
-            if (cv2.waitKey(1) & 0xFF) in (ord('q'), ord('Q'), 27):
+            if _paced_key() in (ord('q'), ord('Q'), 27):
                 pipeline.stop()
                 cv2.destroyAllWindows()
                 return
@@ -248,8 +288,8 @@ def main():
         game.fps = fps
         accumulator += frame_time
 
-        # ── Keyboard ──────────────────────────────────────────────────────
-        key = cv2.waitKey(1) & 0xFF
+        # ── Keyboard (also paces the loop) ────────────────────────────────
+        key = _paced_key()
 
         if showing_help:
             # The card swallows the frame. No key is dispatched — the keypress
@@ -325,7 +365,7 @@ def main():
             cv2.circle(canvas, (dix, diy),  5, CURSOR_INDEX_COL, -1)
 
         # ── Camera preview — top-right corner ─────────────────────────────
-        _paste_cam(canvas, cam_frame)
+        _paste_cam(canvas, cam_frame, new_frame=cam_is_new)
 
         # ── How to play — over everything, including the camera preview ───
         if showing_help:
