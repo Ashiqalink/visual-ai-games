@@ -113,7 +113,8 @@ class RunTracker:
                                         time.localtime(self.started_at)),
             "difficulty": self.diff["name"],
             "settings": {k: self.diff[k] for k in
-                         ("speed", "gap", "spacing", "follow", "ramp_pipes")},
+                         ("speed", "gap", "spacing", "follow_tau",
+                          "ramp_pipes")},
             "score": self.score,
             "cause": cause,
             "duration_s": round(time.perf_counter() - self._t0, 2),

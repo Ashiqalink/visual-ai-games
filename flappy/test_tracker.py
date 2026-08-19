@@ -5,8 +5,8 @@
 Ground truth for the lag estimator is a bird series that is the target series
 delayed by an exact number of samples -- then the reported lag must come back
 as exactly that many frames' worth of milliseconds. The EMA case (what the game
-actually does) is checked more loosely: it must land at or below the DC-limit
-group delay (plus half a frame of quantisation), which is where a real one-pole
+actually does) is checked more loosely: it must land at or below its time
+constant (plus half a frame of quantisation), which is where a real one-pole
 filter's lag sits for a signal with actual bandwidth.
 """
 import sys, os, math, random, tempfile, shutil
@@ -32,8 +32,8 @@ class FakeClock:
 clock = FakeClock()
 tracker.time.perf_counter = clock
 
-EASY = {"name": "EASY", "speed": 5.0, "gap": 200, "spacing": 400, "follow": 0.35, "ramp_pipes": 28}
-HARD = {"name": "HARD", "speed": 9.5, "gap": 125, "spacing": 260, "follow": 0.55, "ramp_pipes": 14}
+EASY = {"name": "EASY", "speed": 165.0, "gap": 200, "spacing": 400, "follow_tau": 0.072, "ramp_pipes": 28}
+HARD = {"name": "HARD", "speed": 310.0, "gap": 125, "spacing": 260, "follow_tau": 0.039, "ramp_pipes": 14}
 
 
 def finger(i, rnd):
@@ -41,8 +41,8 @@ def finger(i, rnd):
 
 
 def synth(diff, mode, param, frames=900, dropout_at=None, seed=0):
-    """mode 'delay': bird = target delayed `param` samples. mode 'ema': the
-    real follow filter."""
+    """mode 'delay': bird = target delayed `param` samples. mode 'tau': the
+    real follow filter, `param` being its time constant in seconds."""
     rnd = random.Random(seed)
     tr = tracker.RunTracker(diff, enabled=True)
     hist, bird, score = [], 300.0, 0
@@ -53,7 +53,8 @@ def synth(diff, mode, param, frames=900, dropout_at=None, seed=0):
         if mode == "delay":
             bird = hist[max(0, i - param)]
         else:
-            bird = bird * (1 - param) + target * param
+            k = math.exp(-DT / param)
+            bird = target + (bird - target) * k
         visible = not (dropout_at and dropout_at <= i < dropout_at + 40)
         tr.frame(target, bird, visible, MS)
         if i and i % 90 == 0:
@@ -75,22 +76,22 @@ for f in os.listdir(SCRATCH):
     os.remove(os.path.join(SCRATCH, f))
 
 print("\nreal follow filter (EMA), plus dropouts")
-synth(EASY, "ema", EASY["follow"], seed=1)
-synth(EASY, "ema", EASY["follow"], dropout_at=300, seed=2)
-synth(HARD, "ema", HARD["follow"], seed=3)
-synth(HARD, "ema", HARD["follow"], dropout_at=500, seed=4)
+synth(EASY, "tau", EASY["follow_tau"], seed=1)
+synth(EASY, "tau", EASY["follow_tau"], dropout_at=300, seed=2)
+synth(HARD, "tau", HARD["follow_tau"], seed=3)
+synth(HARD, "tau", HARD["follow_tau"], dropout_at=500, seed=4)
 runs = tracker.load_runs()
 for r in runs:
-    a = r["settings"]["follow"]
+    tau = r["settings"]["follow_tau"]
     lag = tracker_report.follow_lag_ms(r)
-    dc = (1 - a) / a * MS
+    dc = tau * 1000.0                      # group delay of a one-pole filter
     err, p95 = tracker_report.tracking_error(r)
     miss, longest = tracker_report.dropouts(r)
-    print(f"  {r['difficulty']:6s} follow={a}  lag={lag:5.1f}ms (DC limit {dc:5.1f})  "
+    print(f"  {r['difficulty']:6s} tau={tau*1000:4.0f}ms  lag={lag:5.1f}ms (DC limit {dc:5.1f})  "
           f"err={err:5.1f}px p95={p95:5.1f}  no-hand={miss*100:4.1f}% longest={longest:.0f}ms")
-    # An EMA's lag is below its DC-limit group delay for any signal with real
-    # bandwidth, and the estimator quantises to whole frames -- so HARD's
-    # 13.6 ms DC limit legitimately reports as 0.
+    # A one-pole filter's lag is below its time constant for any signal with
+    # real bandwidth, and the estimator quantises to whole frames -- so HARD's
+    # 39 ms tau can legitimately report as low as 33.
     assert 0 <= lag <= dc * 1.2 + MS / 2, "EMA lag outside plausible range"
 assert abs(tracker_report.dropouts(runs[1])[0] - 40 / 900) < 0.01
 assert abs(tracker_report.dropouts(runs[1])[1] - 39 * MS) < 2
