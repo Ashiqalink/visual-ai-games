@@ -30,7 +30,7 @@ from visual_ai import (
     Renderer3D, Mesh3D, Transform3D, Camera3D, Vector2,
     render_creature, rgb_to_bgr, load_image,
 )
-from visual_ai.imaging import blit_sprite
+from visual_ai.imaging import blit_sprite, blit_ellipse_alpha
 
 # Trail length (number of past positions stored)
 _TRAIL_LEN = TRAIL_LEN
@@ -152,10 +152,13 @@ class Bird:
                 shadow_center = (cx + light_shift_x, int(FLOOR_Y - 4))
                 shadow_col = LIGHTING_SETTINGS.get("SHADOW_COLOR", (10, 15, 20))
                 
-                # Draw translucent dark oval drop shadow onto frame
-                shadow_overlay = frame.copy()
-                cv2.ellipse(shadow_overlay, shadow_center, (max(2, shadow_w), max(2, shadow_h)), 0, 0, 360, shadow_col, -1, cv2.LINE_AA)
-                cv2.addWeighted(shadow_overlay, shadow_alpha, frame, 1.0 - shadow_alpha, 0, frame)
+                # Draw translucent dark oval drop shadow onto frame.
+                # The engine helper blends only the ellipse's bounding box; the
+                # frame.copy() + full-canvas addWeighted this replaces blended
+                # 2.8 MB to itself outside the oval, for nothing.
+                blit_ellipse_alpha(frame, shadow_center,
+                                   (max(2, shadow_w), max(2, shadow_h)),
+                                   shadow_col, shadow_alpha)
 
         # 1. Trail (behind bird)
         if self.launched and len(self.trail) > 1:

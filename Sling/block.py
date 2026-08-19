@@ -16,7 +16,7 @@ from visual_ai import (
     Renderer3D, Mesh3D, Transform3D, Camera3D, Material,
     render_creature, rgb_to_bgr, load_image,
 )
-from visual_ai.imaging import blit_sprite
+from visual_ai.imaging import blit_sprite, blit_ellipse_alpha
 
 from physics import GRAVITY, FLOOR_Y, RESTITUTION, DAMAGE_FACTOR, BLOCK_HEALTH
 from config import (
@@ -239,9 +239,12 @@ class Block:
                 shadow_center = (cx + light_shift_x, int(FLOOR_Y - 3))
                 shadow_col = LIGHTING_SETTINGS.get("SHADOW_COLOR", (10, 15, 20))
                 
-                shadow_overlay = frame.copy()
-                cv2.ellipse(shadow_overlay, shadow_center, (max(4, shadow_w), max(2, shadow_h)), 0, 0, 360, shadow_col, -1, cv2.LINE_AA)
-                cv2.addWeighted(shadow_overlay, shadow_alpha, frame, 1.0 - shadow_alpha, 0, frame)
+                # ROI-blended in the engine — see blit_ellipse_alpha. The
+                # frame.copy() this replaces was one of the three largest costs
+                # in game.draw.
+                blit_ellipse_alpha(frame, shadow_center,
+                                   (max(4, shadow_w), max(2, shadow_h)),
+                                   shadow_col, shadow_alpha)
 
         angle_rad = math.radians(self.angle)
         cos_a, sin_a = math.cos(angle_rad), math.sin(angle_rad)
@@ -519,9 +522,10 @@ class Target(Block):
                 shadow_center = (cx + light_shift_x, int(FLOOR_Y - 4))
                 shadow_col = LIGHTING_SETTINGS.get("SHADOW_COLOR", (10, 15, 20))
                 
-                shadow_overlay = frame.copy()
-                cv2.ellipse(shadow_overlay, shadow_center, (max(2, shadow_w), max(2, shadow_h)), 0, 0, 360, shadow_col, -1, cv2.LINE_AA)
-                cv2.addWeighted(shadow_overlay, shadow_alpha, frame, 1.0 - shadow_alpha, 0, frame)
+                # ROI-blended in the engine — see blit_ellipse_alpha.
+                blit_ellipse_alpha(frame, shadow_center,
+                                   (max(2, shadow_w), max(2, shadow_h)),
+                                   shadow_col, shadow_alpha)
 
         # Body. The sphere-plus-hand-drawn-face this used to be is gone; the
         # creature is a spec in config.py that the engine rasterises, exactly
