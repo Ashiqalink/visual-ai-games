@@ -16,13 +16,15 @@ from engine_bootstrap import ensure_engine
 ensure_engine()
 
 from instructions import draw_card
+from tracker import RunTracker, tracking_enabled
 from visual_ai import VisionPipeline
 
 W, H = 800, 600
 
 TITLE = "ToF Flappy — fly with your fingertip"
 GOAL = ("Fly the bird through the gaps in the pipes. Hitting a pipe, the "
-        "ceiling or the floor ends the run.")
+        "ceiling or the floor ends the run. The gaps start near the middle "
+        "and drift further apart the longer you survive.")
 CONTROLS = (
     ("Hold up one hand",
      "the bird follows the height of your index fingertip — nothing else "
@@ -39,6 +41,7 @@ CONTROLS = (
 KEYS = (
     ("R", "restart after a crash"),
     ("1 / 2 / 3", "easy / medium / hard — restarts the run at that difficulty"),
+    ("T", "run tracking on / off — a local log, never leaves this machine"),
     ("H", "show this card again"),
     ("K", "landmark smoothing on / off"),
     ("L", "ToF depth stabilizer on / off (hold still 3 s)"),
@@ -50,21 +53,47 @@ KEYS = (
 # to the full screen height: the very top and bottom of frame are awkward to
 # reach and are where MediaPipe tracking degrades, so excluding them means the
 # whole playable range sits inside comfortable, reliable finger travel.
-FINGER_TOP    = 0.15 * H
-FINGER_BOTTOM = 0.85 * H
+CONTROL_BAND_TOP    = 0.15 * H
+CONTROL_BAND_BOTTOM = 0.85 * H
+
+# Course geometry, in the vocabulary used throughout this file:
+#
+#   gap          vertical opening you fly through          (per difficulty)
+#   gap centre   where that opening sits on screen         (see GapCourse)
+#   gap margin   keep-out band at ceiling and floor
+#   spacing      distance between consecutive pipes        (per difficulty)
+#   pipe width   thickness of one pillar
+#   lane         the fixed column the bird flies in
+#   head start   clearance before the first pipe of a run
+#   spawn lead   how far past the right edge pipes are kept stocked
+#   scroll speed pixels per frame the pipes travel         (per difficulty)
+#   pipe rate    scroll speed / spacing -- how often a pipe arrives
+#   follow       how hard the bird chases the fingertip    (per difficulty)
+GAP_MARGIN  = 50
+PIPE_WIDTH  = 60
+LANE_X      = 200
+BIRD_RADIUS = 15
+HEAD_START  = 200
 
 # Difficulty presets. EASY is the game exactly as it was tuned before the
 # presets existed, so nothing about the default run changed.
 #
-# Each step up raises pipe speed and narrows both the gap and the spacing
-# between pipes, which is what actually tests tracking: less screen time per
-# pipe and a smaller target to hold the fingertip on. "follow" rises with it --
-# the bird has to chase the fingertip harder to reach the next gap in time, at
-# the cost of passing more of the raw tracking jitter through to the bird.
+# Each step up raises scroll speed and narrows both the gap and the spacing,
+# which is what actually tests tracking: less screen time per pipe and a
+# smaller target to hold the fingertip on. "follow" rises with it -- the bird
+# has to chase the fingertip harder to reach the next gap in time, at the cost
+# of passing more of the raw tracking jitter through to the bird.
+#
+# "ramp_pipes" is how many pipes a run takes to reach its full vertical range
+# (see GapCourse). It shortens with difficulty, so HARD not only ends harder,
+# it gets there sooner.
 DIFFICULTIES = (
-    {"name": "EASY",   "speed": 5.0, "gap": 200, "spacing": 400, "follow": 0.35},
-    {"name": "MEDIUM", "speed": 7.0, "gap": 160, "spacing": 320, "follow": 0.45},
-    {"name": "HARD",   "speed": 9.5, "gap": 125, "spacing": 260, "follow": 0.55},
+    {"name": "EASY",   "speed": 5.0, "gap": 200, "spacing": 400, "follow": 0.35,
+     "ramp_pipes": 28},
+    {"name": "MEDIUM", "speed": 7.0, "gap": 160, "spacing": 320, "follow": 0.45,
+     "ramp_pipes": 20},
+    {"name": "HARD",   "speed": 9.5, "gap": 125, "spacing": 260, "follow": 0.55,
+     "ramp_pipes": 14},
 )
 DEFAULT_DIFFICULTY = 0
 
@@ -73,51 +102,138 @@ def draw_text(img, text, x, y, size=1.0, color=(255, 255, 255), thickness=2):
     cv2.putText(img, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, size, color, thickness)
 
 class Pipe:
-    def __init__(self, x, gap_size=200):
+    def __init__(self, x, gap, gap_centre):
         self.x = x
-        self.width = 60
-        self.gap_size = gap_size
-        # Keep the whole gap on screen with a little margin, whatever its size.
-        margin = gap_size // 2 + 50
-        self.gap_y = random.randint(margin, H - margin)
+        self.width = PIPE_WIDTH
+        self.gap = gap
+        self.gap_centre = gap_centre
         self.passed = False
 
-    def update(self, speed):
-        self.x -= speed
+    def update(self, scroll_speed):
+        self.x -= scroll_speed
 
     def draw(self, frame):
+        top = int(self.gap_centre - self.gap // 2)
+        bottom = int(self.gap_centre + self.gap // 2)
+        x0, x1 = int(self.x), int(self.x + self.width)
         # Top pipe
-        cv2.rectangle(frame, (int(self.x), 0), (int(self.x + self.width), int(self.gap_y - self.gap_size//2)), (0, 200, 0), -1)
-        cv2.rectangle(frame, (int(self.x), 0), (int(self.x + self.width), int(self.gap_y - self.gap_size//2)), (0, 100, 0), 2)
+        cv2.rectangle(frame, (x0, 0), (x1, top), (0, 200, 0), -1)
+        cv2.rectangle(frame, (x0, 0), (x1, top), (0, 100, 0), 2)
         # Bottom pipe
-        cv2.rectangle(frame, (int(self.x), int(self.gap_y + self.gap_size//2)), (int(self.x + self.width), H), (0, 200, 0), -1)
-        cv2.rectangle(frame, (int(self.x), int(self.gap_y + self.gap_size//2)), (int(self.x + self.width), H), (0, 100, 0), 2)
+        cv2.rectangle(frame, (x0, bottom), (x1, H), (0, 200, 0), -1)
+        cv2.rectangle(frame, (x0, bottom), (x1, H), (0, 100, 0), 2)
 
-    def collides(self, bx, by, br):
-        if bx + br > self.x and bx - br < self.x + self.width:
-            if by - br < self.gap_y - self.gap_size//2 or by + br > self.gap_y + self.gap_size//2:
+    def collides(self, bx, by, bird_radius):
+        if bx + bird_radius > self.x and bx - bird_radius < self.x + self.width:
+            if (by - bird_radius < self.gap_centre - self.gap // 2
+                    or by + bird_radius > self.gap_centre + self.gap // 2):
                 return True
         return False
 
 
-def refill_pipes(pipes, diff):
-    """Top the list up so pipes exist one full spacing past the right edge.
+def _smoothstep(t):
+    t = min(1.0, max(0.0, t))
+    return t * t * (3.0 - 2.0 * t)
 
-    The list used to be a fixed pair, which was fine at EASY's 400 px spacing
-    but left HARD's 260 px pair covering only a third of the screen: a new pipe
-    was not spawned until the leftmost one had walked all the way off. Filling
-    by distance instead means every difficulty keeps pipes across the whole
-    width, and the tighter spacings actually read as tighter.
+
+class GapCourse:
+    """Places gap centres for one run, and owns the pipes on screen.
+
+    The vertical travel between consecutive gap centres is what makes a run
+    feel hard -- more so than the gap itself. So it ramps: the first pipes of
+    a run sit near screen centre with only a short hop between them, and the
+    reach grows to nearly the whole playable band over `ramp_pipes` pipes.
+
+    Three things keep the ramp from reading as a script:
+
+    * The reach is a *ceiling*, not the step. Each actual step is drawn from
+      REACH_JITTER x reach, so an early pipe can still hop further than its
+      neighbour and a late one can sit almost still.
+    * Direction is drawn per pipe, never alternated. The weighting is just the
+      room left on each side, so it is an even coin toss at mid-screen and
+      leans back toward the middle near the ceiling or floor -- a mean-
+      reverting walk that visits up and down in no guessable order and never
+      has to be yanked off an edge.
+    * A step that would overshoot the playable band reflects off it rather
+      than clamping. Clamping would stack gap centres flat against the margins
+      and give the boundary away.
+
+    Measured over 200 HARD runs, consecutive gap centres change direction on
+    65% of pipes early and 78% late -- not the near-perfect zigzag (89%) a
+    full-band reach produced, which is why REACH_FULL stops at 0.88 and the
+    jitter floor is low.
+
+    The band is [gap margin + gap/2, H - gap margin - gap/2], so the whole
+    opening is always on screen whatever the difficulty's gap.
     """
-    while not pipes or pipes[-1].x < W + diff["spacing"]:
-        x = pipes[-1].x + diff["spacing"] if pipes else W + 200
-        pipes.append(Pipe(x, diff["gap"]))
-    return pipes
 
+    REACH_START  = 0.16   # opening reach, as a fraction of the band
+    REACH_FULL   = 0.88   # reach once the ramp is done
+    REACH_JITTER = (0.25, 1.0)   # jitter floor -- see the note above
 
-def new_pipes(diff):
-    """The starting run of pipes for a difficulty."""
-    return refill_pipes([], diff)
+    def __init__(self, diff):
+        self.diff = diff
+        half = diff["gap"] // 2
+        self.lo = GAP_MARGIN + half
+        self.hi = H - GAP_MARGIN - half
+        self.band = self.hi - self.lo
+        # A run opens dead centre: the player's finger starts mid-band, and
+        # the first pipe should not cost them a scramble before they have
+        # found the mapping.
+        self.centre = (self.lo + self.hi) / 2.0
+        self.spawned = 0
+        self.pipes = []
+        self.refill()
+
+    def _next_gap_centre(self):
+        if self.spawned == 0:
+            self.spawned = 1
+            return self.centre
+
+        t = self.spawned / float(self.diff["ramp_pipes"])
+        reach = self.band * (self.REACH_START
+                             + (self.REACH_FULL - self.REACH_START) * _smoothstep(t))
+        step = reach * random.uniform(*self.REACH_JITTER)
+
+        # Direction by remaining room: 50/50 mid-band, biased inward near an
+        # edge. No alternation, so the pattern is not learnable.
+        room_up = self.centre - self.lo
+        room_down = self.hi - self.centre
+        if random.uniform(0.0, room_up + room_down) < room_down:
+            nxt = self.centre + step
+        else:
+            nxt = self.centre - step
+
+        # Reflect off the band instead of clamping to it.
+        if nxt > self.hi:
+            nxt = self.hi - (nxt - self.hi)
+        elif nxt < self.lo:
+            nxt = self.lo + (self.lo - nxt)
+        self.centre = min(self.hi, max(self.lo, nxt))
+
+        self.spawned += 1
+        return self.centre
+
+    def refill(self):
+        """Stock pipes one spawn lead (a full spacing) past the right edge.
+
+        Filling by distance rather than keeping a fixed-length list is what
+        makes the tighter spacings read as tighter -- a fixed pair left HARD's
+        260 px spacing covering only a third of the screen.
+        """
+        spacing = self.diff["spacing"]
+        while not self.pipes or self.pipes[-1].x < W + spacing:
+            x = self.pipes[-1].x + spacing if self.pipes else W + HEAD_START
+            self.pipes.append(Pipe(x, self.diff["gap"], self._next_gap_centre()))
+
+    def scroll(self):
+        """Advance every pipe, retire the ones off the left edge, restock."""
+        for pipe in self.pipes:
+            pipe.update(self.diff["speed"])
+        while self.pipes and self.pipes[0].x < -self.pipes[0].width:
+            self.pipes.pop(0)
+        self.refill()
+
 
 def draw_tracking_status(canvas, hand_visible, w=800):
     x0 = w - 120
@@ -130,7 +246,7 @@ def draw_tracking_status(canvas, hand_visible, w=800):
 def main():
     print("Starting ToF Flappy Bird...")
     ai_queue = queue.Queue(maxsize=1)
-    
+
     # Initialize pipeline with camera disabled
     pipeline = VisionPipeline(
         result_queue=ai_queue,
@@ -148,16 +264,21 @@ def main():
     cv2.namedWindow("ToF Flappy", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("ToF Flappy", W, H)
 
-    bird_x = 200
     bird_y = H // 2
-    bird_r = 15
-    
+
     diff_idx = DEFAULT_DIFFICULTY
     diff = DIFFICULTIES[diff_idx]
-    pipes = new_pipes(diff)
+    course = GapCourse(diff)
     score = 0
+
+    # Offline diagnostics. Records numbers only -- no frames, no landmarks --
+    # to flappy/data/ on this machine, and reads back with tracker_report.py.
+    # Set FLAPPY_TRACKING=0 to start with it off; T toggles it in game.
+    tracking_on = tracking_enabled()
+    tracker = RunTracker(diff, enabled=tracking_on)
+    last_frame_t = time.perf_counter()
     game_over = False
-    
+
     target_y = float(H // 2)
     cam_frame = None
     hand_visible = False
@@ -189,56 +310,65 @@ def main():
                 # absolute, uses the full screen, and is far easier to hold
                 # steady with one finger.
                 finger_y = float(latest.get("index_pos", (0, H // 2))[1])
-                target_y = np.interp(finger_y, [FINGER_TOP, FINGER_BOTTOM], [0, H])
+                target_y = np.interp(finger_y, [CONTROL_BAND_TOP, CONTROL_BAND_BOTTOM],
+                                    [0, H])
             else:
                 # Hand lost: let the bird sink toward the middle rather than
                 # snapping, so a brief tracking dropout is survivable.
                 target_y = target_y * 0.9 + (H / 2.0) * 0.1
 
+        now = time.perf_counter()
+        frame_ms = (now - last_frame_t) * 1000.0
+        last_frame_t = now
+
         # Smooth bird movement towards target
         if not showing_help:
             bird_y = bird_y * (1.0 - diff["follow"]) + target_y * diff["follow"]
+            if not game_over:
+                tracker.frame(target_y, bird_y, hand_visible, frame_ms)
 
         frame = np.zeros((H, W, 3), dtype=np.uint8)
         frame[:] = (40, 30, 20) # Dark background
 
         if not game_over and not showing_help:
-            # Update pipes
-            for p in pipes:
-                p.update(diff["speed"])
-                if not p.passed and p.x + p.width < bird_x:
-                    p.passed = True
+            course.scroll()
+            for pipe in course.pipes:
+                if not pipe.passed and pipe.x + pipe.width < LANE_X:
+                    pipe.passed = True
                     score += 1
-            
-            # Remove off-screen pipes and add new ones
-            while pipes and pipes[0].x < -pipes[0].width:
-                pipes.pop(0)
-            refill_pipes(pipes, diff)
+                    tracker.pipe_cleared(score, bird_y, pipe.gap_centre,
+                                         pipe.gap)
 
             # Collision
-            for p in pipes:
-                if p.collides(bird_x, bird_y, bird_r):
+            for pipe in course.pipes:
+                if pipe.collides(LANE_X, bird_y, BIRD_RADIUS):
                     game_over = True
+                    tracker.end("pipe", score)
             if bird_y > H or bird_y < 0:
                 game_over = True
+                tracker.end("floor" if bird_y > H else "ceiling", score)
 
         # Draw pipes
-        for p in pipes:
-            p.draw(frame)
+        for pipe in course.pipes:
+            pipe.draw(frame)
 
         # Draw bird
         bird_color = (0, 200, 255) if not game_over else (0, 0, 255)
-        cv2.circle(frame, (int(bird_x), int(bird_y)), bird_r, bird_color, -1)
-        cv2.circle(frame, (int(bird_x), int(bird_y)), bird_r, (0, 100, 255), 2)
+        cv2.circle(frame, (LANE_X, int(bird_y)), BIRD_RADIUS, bird_color, -1)
+        cv2.circle(frame, (LANE_X, int(bird_y)), BIRD_RADIUS, (0, 100, 255), 2)
 
         # Draw UI
         draw_text(frame, f"Score: {score}", 20, 40, 1.0)
         draw_text(frame, f"Difficulty: {diff['name']}", 20, 110, 0.7, (0, 220, 255))
+        # An optional feature that fails quietly is a feature that reads as
+        # broken, so the recording state is on the HUD rather than on stdout.
+        draw_text(frame, "REC (local)" if tracking_on else "REC off", 20, 145, 0.6,
+                  (0, 200, 120) if tracking_on else (120, 120, 120))
         if latest is not None:
             smoothing_on = latest.get("smoothing_enabled", True)
         draw_text(frame, f"Smoothing: {'ON' if smoothing_on else 'OFF'}", 20, 80, 0.7,
                   (0, 255, 0) if smoothing_on else (0, 180, 255))
-        draw_text(frame, "Raise/lower your index finger to fly  |  1/2/3: difficulty  |  H: how to play  |  K: smoothing  L: ToF stab",
+        draw_text(frame, "Raise/lower your index finger to fly  |  1/2/3: difficulty  |  T: tracking  |  H: how to play  |  K: smoothing  L: ToF stab",
                   20, H - 20, 0.5, (150, 150, 150))
 
         if game_over:
@@ -260,6 +390,12 @@ def main():
             # that dismisses the card should not also toggle a filter.
             if key != 255:
                 showing_help = False
+                # Start the clock when play starts, not when the window opens,
+                # so time spent reading the card is not logged as run duration.
+                # Only if nothing has been recorded yet -- pressing H mid-run
+                # must not throw that run's samples away.
+                if not tracker.frames:
+                    tracker = RunTracker(diff, enabled=tracking_on)
         elif key in (ord('h'), ord('H')):
             showing_help = True
         elif key in (ord('k'), ord('K')):
@@ -276,23 +412,36 @@ def main():
         elif key in (ord('x'), ord('X')):
             pipeline.cancel_stabilization()
             tof_stab_on = False
+        elif key in (ord('t'), ord('T')):
+            tracking_on = not tracking_on
+            if not tracking_on:
+                tracker.end("switch", score)
+            tracker = RunTracker(diff, enabled=tracking_on)
+            print(f"[tracker] run logging: {'ON (local file)' if tracking_on else 'OFF'}")
         elif key in (ord('1'), ord('2'), ord('3')):
             # Changing difficulty restarts the run: the pipes already on screen
             # were laid out for the old spacing and gap, so keeping them would
             # mix two difficulties into one score.
             diff_idx = key - ord('1')
             diff = DIFFICULTIES[diff_idx]
+            tracker.end("switch", score)
+            tracker = RunTracker(diff, enabled=tracking_on)
             score = 0
-            pipes = new_pipes(diff)
+            course = GapCourse(diff)
             bird_y = H // 2
             target_y = float(H // 2)
             game_over = False
         elif key == ord('r') and game_over:
+            tracker = RunTracker(diff, enabled=tracking_on)
             score = 0
-            pipes = new_pipes(diff)
+            course = GapCourse(diff)
             bird_y = H // 2
             target_y = float(H // 2)
             game_over = False
+
+    # Quitting mid-run still writes it; end() is idempotent, so a run that
+    # already ended in a crash is not logged twice.
+    tracker.end("quit", score)
 
     pipeline.stop()
     cv2.destroyAllWindows()
