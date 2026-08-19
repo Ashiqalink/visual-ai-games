@@ -22,7 +22,7 @@ from visual_ai import VisionPipeline
 
 W, H = 800, 600
 
-TITLE = "ToF Flappy — fly with your fingertip"
+TITLE = "Flappy — fly with your fingertip"
 GOAL = ("Fly the bird through the gaps in the pipes. Hitting a pipe, the "
         "ceiling or the floor ends the run. The gaps start near the middle "
         "and drift further apart the longer you survive.")
@@ -45,8 +45,6 @@ KEYS = (
     ("T", "run tracking on / off — a local log, never leaves this machine"),
     ("H", "show this card again"),
     ("K", "landmark smoothing on / off"),
-    ("L", "ToF depth stabilizer on / off (hold still 3 s)"),
-    ("X", "cancel a calibration"),
     ("Q / ESC", "quit"),
 )
 
@@ -288,10 +286,14 @@ def draw_tracking_status(canvas, hand_visible, w=800):
     cv2.putText(canvas, status_text, (x0 + 15, y0 + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_col, 2)
 
 def main():
-    print("Starting ToF Flappy Bird...")
+    print("Starting Flappy...")
     ai_queue = queue.Queue(maxsize=1)
 
-    # Initialize pipeline with camera disabled
+    # No depth of any kind: this game steers off the index fingertip's Y in
+    # the RGB frame and reads no depth key at all. It used to switch the
+    # pipeline's simulated-depth flag on and offer a depth-stabilizer key,
+    # both of which gated a Z axis nothing here consumes -- controls that did
+    # nothing, under a name that promised a sensor the machine has not got.
     pipeline = VisionPipeline(
         result_queue=ai_queue,
         width=W,
@@ -300,13 +302,11 @@ def main():
         # so the face graph was pure cost — 3.1 ms/frame of inference.
         detect_face=False,
     )
-    # Force ToF simulated true for testing, but keep camera on so we can simulate ToF depth!
-    pipeline.tof_simulated = True
     pipeline.disable_camera = False
     pipeline.start()
 
-    cv2.namedWindow("ToF Flappy", cv2.WINDOW_NORMAL)
-    cv2.resizeWindow("ToF Flappy", W, H)
+    cv2.namedWindow("Flappy", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Flappy", W, H)
 
     bird_y = H // 2
 
@@ -344,7 +344,6 @@ def main():
     target_y = float(H // 2)
     cam_frame = None
     hand_visible = False
-    tof_stab_on = False
     smoothing_on = True
 
     # The card is up before the first pipe moves. The pipeline keeps running
@@ -434,7 +433,7 @@ def main():
             smoothing_on = latest.get("smoothing_enabled", True)
         draw_text(frame, f"Smoothing: {'ON' if smoothing_on else 'OFF'}", 20, 80, 0.7,
                   (0, 255, 0) if smoothing_on else (0, 180, 255))
-        draw_text(frame, "Raise/lower your index finger to fly  |  1/2/3: difficulty  |  T: tracking  |  H: how to play  |  K: smoothing  L: ToF stab",
+        draw_text(frame, "Raise/lower your index finger to fly  |  1/2/3: difficulty  |  T: tracking  |  H: how to play  |  K: smoothing",
                   20, H - 20, 0.5, (150, 150, 150))
 
         if game_over:
@@ -446,7 +445,7 @@ def main():
         if showing_help:
             draw_card(frame, TITLE, GOAL, CONTROLS, KEYS)
 
-        cv2.imshow("ToF Flappy", frame)
+        cv2.imshow("Flappy", frame)
 
         key = paced_key()
         if key in (27, ord('q')):
@@ -467,17 +466,6 @@ def main():
         elif key in (ord('k'), ord('K')):
             on = pipeline.toggle_smoothing()
             print(f"[Stabilisation] Landmark smoothing: {'ON' if on else 'OFF (raw positions)'}")
-        elif key in (ord('l'), ord('L')):
-            tof_stab_on = not tof_stab_on
-            if tof_stab_on:
-                pipeline.begin_stabilization(3.0)
-                print("[Stabilisation] ToF stabilizer: calibrating — hold still")
-            else:
-                pipeline.disable_stabilization()
-                print("[Stabilisation] ToF stabilizer: OFF")
-        elif key in (ord('x'), ord('X')):
-            pipeline.cancel_stabilization()
-            tof_stab_on = False
         elif key in (ord('t'), ord('T')):
             tracking_on = not tracking_on
             if not tracking_on:
