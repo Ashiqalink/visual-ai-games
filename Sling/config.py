@@ -30,9 +30,30 @@ MAX_PULL       = 170    # maximum slingshot pull radius (px)
 AIR_DRAG       = 0.992  # per-frame velocity multiplier (< 1 = gentle deceleration)
 BIRD_BOUNCE    = 0.35   # bird floor-bounce restitution coefficient
 BIRD_LINGER    = 90     # frames bird stays active after first ground/block impact
-MIN_DAMAGE_VEL = 1.08   # minimum impact speed to deal block-block damage
-DAMAGE_FACTOR  = 4.17   # scales bird speed into block health reduction (compensated for slower speed)
-BLOCK_HEALTH   = 30     # default block health (overridden per material in block.py)
+MIN_DAMAGE_VEL = 2.5   # minimum impact speed to deal block-block damage (raised from 1.08 to stop idle-settle damage)
+# Damage budget. Peak launch speed is MAX_PULL * POWER_FACTOR ~= 10.2 px/frame,
+# so a full-power Ruby hit lands mass*speed*DAMAGE_FACTOR ~= 82 damage: enough
+# to punch a stone block (44) and carry on. At 4.17 it was 42 — one point short
+# of a single stone block at maximum pull, which made the stone levels
+# unwinnable rather than hard. Tune this together with the material healths
+# below; they only mean anything relative to each other.
+DAMAGE_FACTOR  = 8.0    # scales bird momentum into block health reduction
+BLOCK_HEALTH   = 22     # default block health (overridden per material in block.py)
+
+# A bird that destroys a block should carry on through the gap it just made
+# instead of being slowed as if the block had held. Without this a shot died on
+# the first block of any stack and structures could only be chipped, never
+# broken open.
+PUNCH_THROUGH_RETAIN = 0.8   # velocity kept after shattering a block
+BLOCK_RESIST_MAX     = 0.62  # cap on the slowdown a *surviving* block applies
+
+# Collapse damage. Structure that falls on itself is the main source of destruction
+# once the bird has stopped, so this is what makes a good shot cascade.
+# `BLOCK_IMPACT_DAMAGE` scales the excess impact speed; the mass ratio on top of
+# it means a stone slab landing on ice does real harm while ice landing on stone
+# mostly just breaks the ice.
+BLOCK_IMPACT_DAMAGE  = 6.0   # per (px/frame) of impact speed above MIN_DAMAGE_VEL
+BLOCK_IMPACT_MASS_K  = 2.0   # equal masses -> 1.0x, heavy-onto-light -> up to 2.0x
 
 # Block-block collision dampening (used inside resolve_block_collision)
 BLOCK_COLL_X_DAMP  = 0.4   # X velocity dampening after elastic exchange
@@ -51,16 +72,16 @@ Z_CLICK_XY_MAX_PX    = 30    # max X/Y drift allowed during a Z-push click
 #  SLINGSHOT
 # =============================================================================
 SLING_X = 200           # fork centre X (px)
-SLING_Y = 550           # fork centre Y (px)
-FORK_SPREAD_X  = 20     # horizontal offset from centre to each fork tip (px)
-FORK_RISE_Y    = 25     # how far fork tips sit above fork centre (px)
-HANDLE_DROP_Y  = 100    # how far handle base sits below fork centre (px)
+SLING_Y = 530           # fork centre Y (px)  — raised slightly for better composition
+FORK_SPREAD_X  = 28     # horizontal offset from centre to each fork tip (px)
+FORK_RISE_Y    = 35     # how far fork tips sit above fork centre (px)
+HANDLE_DROP_Y  = 115    # how far handle base sits below fork centre (px)
 
-SLING_WOOD_COLOR    = (30, 100, 160)  # BGR dark brown
-SLING_WOOD_DARK     = (15,  60, 100)  # BGR darker accent
-SLING_ELASTIC_NEAR  = (0, 140, 255)   # BGR colour when relaxed (orange)
-SLING_ELASTIC_FAR   = (0,  40, 220)   # BGR colour when fully stretched (red)
-SLING_SNAP_DURATION = 8               # frames for snap-back animation
+SLING_WOOD_COLOR    = (42, 108, 175)  # BGR warm medium brown
+SLING_WOOD_DARK     = (18,  55,  95)  # BGR dark bark shadow
+SLING_ELASTIC_NEAR  = (0,  140, 255)  # BGR orange (relaxed)
+SLING_ELASTIC_FAR   = (0,   40, 220)  # BGR deep red (fully stretched)
+SLING_SNAP_DURATION = 10              # frames for snap-back animation
 
 #  BIRD VISUALS
 # =============================================================================
@@ -75,7 +96,7 @@ PTS_DEBRIS      = 100   # score for destroying a debris piece
 PTS_TARGET      = 5000  # score for destroying a target
 PTS_UNUSED_BIRD = 10000 # bonus for remaining birds
 
-TARGET_HEALTH   = 40    # hit points for a target
+TARGET_HEALTH   = 22    # hit points for a target (one solid graze kills)
 
 # Star rating thresholds (per level basis could be refined, using globals for simplicity)
 STAR_1_SCORE    = 10000
@@ -187,6 +208,11 @@ BIRD_RADII = {RUBY: 28, AMBER: 26, SLATE: 30, AZURE: 22, IVORY: 26}
 
 BIRD_MASSES = {RUBY: 1.0, AMBER: 0.7, SLATE: 1.1, AZURE: 0.5, IVORY: 1.0}
 
+# Damage multiplier applied on top of mass x speed when a bird hits a block.
+# Gives each bird a distinct role: Slate is the wrecker, Azure the light
+# precision bird that relies on speed rather than punch.
+BIRD_DAMAGE = {RUBY: 1.0, AMBER: 1.35, SLATE: 1.7, AZURE: 0.9, IVORY: 1.2}
+
 # BGR, to match the OpenCV frames these are drawn onto. Kept in step with the
 # RGB values in BIRD_SPECS below — these tint the trail, impact ring and
 # speed lines, so a mismatch shows up as effects that clash with the sprite.
@@ -269,7 +295,7 @@ except ImportError:
 # BGR colour values; health/density per material, and visual_ai Material instance
 BLOCK_MATERIALS = {
     "wood": {
-        "health":  30,
+        "health":  22,
         "density": 1.0,
         "restitution": 0.35,
         "friction": 0.5,
@@ -286,7 +312,7 @@ BLOCK_MATERIALS = {
         )
     },
     "stone": {
-        "health":  80,
+        "health":  44,
         "density": 1.8,
         "restitution": 0.05,
         "friction": 0.85,
@@ -303,7 +329,7 @@ BLOCK_MATERIALS = {
         )
     },
     "ice": {
-        "health":  15,
+        "health":  8,
         "density": 0.6,
         "restitution": 0.15,
         "friction": 0.1,

@@ -25,7 +25,8 @@ import math
 import random
 import numpy as np
 from bird import Bird
-from config import BIRD_ORDER, BIRD_COLOURS as COLOURS
+from config import (BIRD_ORDER, BIRD_COLOURS as COLOURS, BIRD_DAMAGE,
+                    PUNCH_THROUGH_RETAIN, BLOCK_RESIST_MAX)
 from block import Block, Target
 from slingshot import SLING_X, SLING_Y, FORK_LEFT, FORK_RIGHT
 from physics import (
@@ -112,71 +113,103 @@ def _level_easy() -> list[Block]:
 
 
 def _level_medium() -> list[Block]:
-    """Pyramid with mixed wood + ice."""
+    """The Ice Barracks — a two-storey hut standing on ice legs.
+
+    The point of the layout is that nothing here has to be broken one block at
+    a time. Every load-bearing member is ice (8 hp, shatters on a graze); the
+    wood planks are floors and ceilings, and the two ground-floor pigs sit
+    *under* the upper floor. Take out either pair of ice legs and the storey
+    above drops on them.
+
+    The stone slab on the left face is the only hard part: it shields a
+    straight-line shot at the legs, so the fun opening is a lofted arc onto the
+    roof or a low skimmer under the overhang.
+    """
     blocks: list[Block] = []
 
-    # Ground row — outer wood, inner ice
-    blocks.append(Block(820, FLOOR_Y - BH, BW, BH, "wood"))
-    blocks.append(Block(900, FLOOR_Y - BH, BW, BH, "ice"))
-    blocks.append(Block(980, FLOOR_Y - BH, BW, BH, "ice"))
-    blocks.append(Block(1060, FLOOR_Y - BH, BW, BH, "wood"))
+    # ── Ground floor: ice legs, stone shield on the exposed left face ──────
+    blocks.append(Block(820, FLOOR_Y - BH,   BW, BH, "stone"))  # shield
+    blocks.append(Block(875, FLOOR_Y - BH,   BW, BH, "ice"))
+    blocks.append(Block(970, FLOOR_Y - BH,   BW, BH, "ice"))
+    blocks.append(Block(1015, FLOOR_Y - BH,  BW, BH, "wood"))
 
-    # Ground plank
-    blocks.append(Block(820, FLOOR_Y - BH - TH, 280, TH, "wood"))
+    # First floor
+    blocks.append(Block(815, FLOOR_Y - BH - TH, 225, TH, "wood"))
 
-    # Mid row
-    blocks.append(Block(860, FLOOR_Y - BH * 2 - TH, BW, BH, "wood"))
-    blocks.append(Block(980, FLOOR_Y - BH * 2 - TH, BW, BH, "wood"))
+    # Two pigs sheltering on the ground floor, in the bay between the ice legs
+    blocks.append(Target(903, FLOOR_Y - 2 * 15,  radius=15))
+    blocks.append(Target(937, FLOOR_Y - 2 * 15,  radius=15))
 
-    # Mid plank
-    blocks.append(Block(860, FLOOR_Y - BH * 2 - TH * 2, 180, TH, "wood"))
+    # ── Upper storey: wood walls, ice crossbeam in the middle ─────────────
+    y2 = FLOOR_Y - BH - TH
+    blocks.append(Block(825, y2 - BH,  BW, BH, "wood"))
+    blocks.append(Block(915, y2 - BH,  BW, BH, "ice"))
+    blocks.append(Block(1010, y2 - BH, BW, BH, "wood"))
 
-    # Top — ice (fragile crown)
-    blocks.append(Block(920, FLOOR_Y - BH * 3 - TH * 2, BW, BH, "ice"))
-    
-    # Pigs
-    blocks.append(Target(860, FLOOR_Y - BH * 2 - TH * 2 - 30, radius=18))
-    blocks.append(Target(980, FLOOR_Y - BH * 2 - TH * 2 - 30, radius=18))
-    blocks.append(Target(920, FLOOR_Y - BH * 3 - TH * 2 - 30, radius=18))
+    # Roof
+    blocks.append(Block(815, y2 - BH - TH, 225, TH, "wood"))
+
+    # ── Crown: a pig on the roof, flanked by ice so a hit skitters ─────────
+    y3 = y2 - BH - TH
+    blocks.append(Block(860, y3 - BH, BW, BH, "ice"))
+    blocks.append(Block(970, y3 - BH, BW, BH, "ice"))
+    blocks.append(Target(905, y3 - 2 * 18, radius=18))
 
     return blocks
 
 
 def _level_hard() -> list[Block]:
-    """Stone fortress — two towers with a bridge, mixed materials."""
+    """The Keep — a stone shell on a structure that is anything but stone.
+
+    The old version was three solid stone columns: ten 44 hp blocks with no
+    weak point and nothing to collapse, which is why it read as impossible.
+    Stone is now armour, not structure. The front battlement soaks the obvious
+    flat shot, the great hall's roof is carried on ice pillars, and the tower
+    stands on wood. Every pig is under or on top of something that can come
+    down, so the level is won by collapsing it, not by chewing through it.
+
+    Three ways in, roughly in order of difficulty:
+      · loft over the battlement onto the hall roof and crush the pigs inside
+      · a fast flat shot that clips the ice pillars through the front gap
+      · knock the tower over sideways into the hall
+    """
     blocks: list[Block] = []
 
-    # ── Left tower ────────────────────────────────────────────────────────
-    # Stone base
-    blocks.append(Block(780, FLOOR_Y - BH, BW, BH, "stone"))
-    blocks.append(Block(840, FLOOR_Y - BH, BW, BH, "stone"))
-    # Base plank
-    blocks.append(Block(780, FLOOR_Y - BH - TH, 90, TH, "wood"))
-    # Wood pillar
-    blocks.append(Block(800, FLOOR_Y - BH * 2 - TH, BW, BH, "wood"))
-    # Ice cap
-    blocks.append(Block(800, FLOOR_Y - BH * 3 - TH, BW, BH, "ice"))
+    # ── Front battlement (x = 770): stone, deliberately unbreakable-ish ────
+    bx = 770
+    blocks.append(Block(bx, FLOOR_Y - BH,     BW, BH, "stone"))
+    blocks.append(Block(bx, FLOOR_Y - 2 * BH, BW, BH, "stone"))
+    blocks.append(Block(bx, FLOOR_Y - 3 * BH, BW, BH, "wood"))   # softer merlon
 
-    # ── Right tower ───────────────────────────────────────────────────────
-    blocks.append(Block(1000, FLOOR_Y - BH, BW, BH, "stone"))
-    blocks.append(Block(1060, FLOOR_Y - BH, BW, BH, "stone"))
-    blocks.append(Block(1000, FLOOR_Y - BH - TH, 90, TH, "wood"))
-    blocks.append(Block(1020, FLOOR_Y - BH * 2 - TH, BW, BH, "wood"))
-    blocks.append(Block(1020, FLOOR_Y - BH * 3 - TH, BW, BH, "ice"))
+    # ── Great hall (x = 850..1030) ────────────────────────────────────────
+    # Ice pillars carry the whole hall. This is the level's weak point.
+    for px in (855, 935, 1010):
+        blocks.append(Block(px, FLOOR_Y - BH, BW, BH, "ice"))
 
-    # ── Bridge between towers ─────────────────────────────────────────────
-    blocks.append(Block(870, FLOOR_Y - BH * 2 - TH, 130, TH, "wood"))
-    blocks.append(Block(900, FLOOR_Y - BH * 3 - TH, BW, BH, "ice"))
-    blocks.append(Block(960, FLOOR_Y - BH * 3 - TH, BW, BH, "ice"))
+    hall_floor_y = FLOOR_Y - BH - TH
+    blocks.append(Block(845, hall_floor_y, 190, TH, "wood"))
 
-    # ── Outer buttresses ──────────────────────────────────────────────────
-    blocks.append(Block(740, FLOOR_Y - BH, BW, BH, "wood"))
-    blocks.append(Block(1100, FLOOR_Y - BH, BW, BH, "wood"))
-    
-    # Pigs
-    blocks.append(Target(800, FLOOR_Y - BH * 3 - TH - 30, radius=15))
-    blocks.append(Target(1020, FLOOR_Y - BH * 3 - TH - 30, radius=15))
-    blocks.append(Target(930, FLOOR_Y - BH * 3 - TH - 30, radius=20))
+    # Two pigs on the hall floor, boxed in by stone side walls
+    blocks.append(Target(895, hall_floor_y - 2 * 16, radius=16))
+    blocks.append(Target(965, hall_floor_y - 2 * 16, radius=16))
+
+    blocks.append(Block(845, hall_floor_y - BH,  BW, BH, "stone"))
+    blocks.append(Block(1015, hall_floor_y - BH, BW, BH, "stone"))
+
+    # Hall roof — heavy stone slab, so dropping it is lethal to what is under it
+    hall_roof_y = hall_floor_y - BH - TH
+    blocks.append(Block(845, hall_roof_y, 190, TH, "stone"))
+
+    # King pig on the roof, with an ice screen in front of him
+    blocks.append(Block(880, hall_roof_y - BH, BW, BH, "ice"))
+    blocks.append(Target(925, hall_roof_y - 2 * 20, radius=20))
+
+    # ── Rear tower (x = 1080): wood legs, stone cap, pig on top ───────────
+    tx = 1080
+    blocks.append(Block(tx, FLOOR_Y - BH,     BW, BH, "wood"))
+    blocks.append(Block(tx, FLOOR_Y - 2 * BH, BW, BH, "wood"))
+    blocks.append(Block(tx, FLOOR_Y - 3 * BH, BW, BH, "stone"))
+    blocks.append(Target(tx - 5, FLOOR_Y - 3 * BH - 2 * 15, radius=15))
 
     return blocks
 
@@ -187,27 +220,36 @@ _LEVELS = [_level_easy, _level_medium, _level_hard]
 def _build_level(level_idx: int) -> list[Block]:
     idx = max(0, min(level_idx, len(_LEVELS) - 1))
     blocks = _LEVELS[idx]()
-    
-    # Center the platform horizontally under the blocks
-    # (Blocks are roughly centered at X=920 before LEVEL_X_OFF)
-    plat_w = PLATFORM_W
+
     plat_h = PLATFORM_H
-    plat_x = 920 + LEVEL_X_OFF - plat_w / 2
+
+    # Compute how wide the level's footprint is before the X offset is applied,
+    # then size the platform to cover it with a small margin on each side.
+    if blocks:
+        min_x = min(b.rect[0] for b in blocks)
+        max_x = max(b.rect[0] + b.rect[2] for b in blocks)
+        plat_w = max(PLATFORM_W, int(max_x - min_x) + 40)
+        plat_x = min_x - 20
+    else:
+        plat_w = PLATFORM_W
+        plat_x = 920 - plat_w / 2
+
     plat_y = FLOOR_Y - plat_h
 
-    # Move blocks horizontally, and shift them up so they rest on the platform
+    # Move blocks horizontally by LEVEL_X_OFF, and shift up to rest on the platform
     for b in blocks:
         b.rect[0] += LEVEL_X_OFF
         b.rect[1] -= plat_h
 
-    # Create a static platform for them to rest on at the floor level
-    platform = Block(plat_x, plat_y, plat_w, plat_h, "wood")
+    # Create a static platform at floor level, also shifted by LEVEL_X_OFF
+    platform = Block(plat_x + LEVEL_X_OFF, plat_y, plat_w, plat_h, "wood")
     platform.is_static = True
     platform.health = PLATFORM_HEALTH
     platform.max_health = PLATFORM_HEALTH
     blocks.append(platform)
 
     return blocks
+
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -856,12 +898,20 @@ class Game:
             if id(blk) not in bird._hit_blocks:
                 # Hit!
                 bird._hit_blocks.add(id(blk))
-                blk.apply_impulse(bird.vx, bird.vy, bird.mass)
+                shattered = blk.apply_impulse(bird.vx, bird.vy, bird.mass,
+                                              BIRD_DAMAGE.get(bird.kind, 1.0))
                 bird.impact_timer = 15
 
-                # Slow bird based on block toughness (ice easy, stone hard)
-                block_resist = getattr(blk, "density", 1.0) * 0.3
-                factor = max(0.1, 1.0 - block_resist)
+                # A block that survived the hit stops the bird in proportion to
+                # how heavy it is; one that shattered barely slows it, so a
+                # powerful shot carries through a stack instead of dying on its
+                # front face.
+                if shattered:
+                    factor = PUNCH_THROUGH_RETAIN
+                else:
+                    block_resist = min(BLOCK_RESIST_MAX,
+                                       getattr(blk, "density", 1.0) * 0.3)
+                    factor = max(0.1, 1.0 - block_resist)
                 bird.vx *= factor
                 bird.vy *= factor
 

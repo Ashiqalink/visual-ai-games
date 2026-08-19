@@ -19,6 +19,7 @@ from visual_ai import (
 from visual_ai.imaging import blit_sprite, blit_ellipse_alpha
 
 from physics import GRAVITY, FLOOR_Y, RESTITUTION, DAMAGE_FACTOR, BLOCK_HEALTH
+from ui import draw_ground_shadow
 from config import (
     BLOCK_VX_TRANSFER, BLOCK_VY_TRANSFER, DEBRIS_FADE_FRAMES,
     BLOCK_MATERIALS as MATERIALS, LIGHTING_SETTINGS,
@@ -128,15 +129,22 @@ class Block:
             floor_friction = mat.get("friction", 0.5)
             self.vx *= max(0.0, 1.0 - floor_friction * 0.18)
 
-    def apply_impulse(self, bird_vx: float, bird_vy: float, bird_mass: float):
-        """Bird hit → damage + physical push."""
+    def apply_impulse(self, bird_vx: float, bird_vy: float, bird_mass: float,
+                      damage_mult: float = 1.0) -> bool:
+        """Bird hit → damage + physical push. damage_mult is the per-bird-kind
+        multiplier (config.BIRD_DAMAGE) — it scales damage only, not the push.
+
+        Returns True if the hit destroyed the block, so the caller can let the
+        bird punch through the gap rather than slowing it as if it had held.
+        """
         speed  = math.sqrt(bird_vx**2 + bird_vy**2)
         force  = bird_mass * speed
-        self.health -= force * DAMAGE_FACTOR
+        self.health -= force * DAMAGE_FACTOR * damage_mult
         if not self.is_static:
             self.vx     += bird_vx * BLOCK_VX_TRANSFER
             self.vy     += bird_vy * BLOCK_VY_TRANSFER
             self.on_ground = False
+        return self.health <= 0 and not self.is_static
 
     def _get_damaged_polygon(self, cx: float, cy: float, w: float, h: float, cos_a: float, sin_a: float) -> tuple[np.ndarray, list[tuple[tuple[int, int], tuple[int, int]]]]:
         """
@@ -222,29 +230,15 @@ class Block:
         frame_h, frame_w = frame.shape[:2]
 
         # Ground Drop Shadow projection for blocks & platform
-        if LIGHTING_SETTINGS.get("SHADOWS_ENABLED", True) and not self.is_debris:
-            shadow_offset_y = int(FLOOR_Y - (y + h))
-            if 0 <= shadow_offset_y < 180:
-                base_opacity = LIGHTING_SETTINGS.get("SHADOW_OPACITY", 0.45)
-                shadow_alpha = max(0.06, base_opacity * (1.0 - shadow_offset_y / 180.0))
-                
-                angle_rad = math.radians(LIGHTING_SETTINGS.get("LIGHT_ANGLE", 45.0))
-                light_shift_x = int(math.cos(angle_rad) * LIGHTING_SETTINGS.get("SHADOW_OFFSET_X", 15.0) * (1.0 + shadow_offset_y / 140.0))
-                
-                scale_x = LIGHTING_SETTINGS.get("SHADOW_SCALE_X", 1.25)
-                scale_y = LIGHTING_SETTINGS.get("SHADOW_SCALE_Y", 0.35)
-                
-                shadow_w = int(w * 0.5 * scale_x)
-                shadow_h = max(3, int(h * 0.25 * scale_y))
-                shadow_center = (cx + light_shift_x, int(FLOOR_Y - 3))
-                shadow_col = LIGHTING_SETTINGS.get("SHADOW_COLOR", (10, 15, 20))
-                
-                # ROI-blended in the engine — see blit_ellipse_alpha. The
-                # frame.copy() this replaces was one of the three largest costs
-                # in game.draw.
-                blit_ellipse_alpha(frame, shadow_center,
-                                   (max(4, shadow_w), max(2, shadow_h)),
-                                   shadow_col, shadow_alpha)
+        if not self.is_debris:
+            block_scale_x = LIGHTING_SETTINGS.get("SHADOW_SCALE_X", 1.25)
+            block_scale_y = LIGHTING_SETTINGS.get("SHADOW_SCALE_Y", 0.35)
+            shadow_w = int(w * 0.5 * block_scale_x)
+            shadow_h = max(3, int(h * 0.25 * block_scale_y))
+            draw_ground_shadow(frame, cx, y + h, shadow_w, shadow_h,
+                               min_alpha=0.06, max_range=180,
+                               range_divisor=180.0, light_divisor=140.0,
+                               center_y_offset=3)
 
         angle_rad = math.radians(self.angle)
         cos_a, sin_a = math.cos(angle_rad), math.sin(angle_rad)
@@ -298,7 +292,8 @@ class Block:
         # Fade out debris before it despawns
         if self.is_debris and self.lifespan > 0 and self.lifespan < DEBRIS_FADE_FRAMES:
             alpha = self.lifespan / 30.0
-            bg = (18, 18, 28)
+            # Debris rests on grass now, not the old navy canvas — fade there.
+            bg = (44, 104, 58)
             fill_col = tuple(int(c * alpha + b * (1 - alpha)) for c, b in zip(fill_col, bg))
             dark_col = tuple(int(c * alpha + b * (1 - alpha)) for c, b in zip(dark_col, bg))
             grain_col = tuple(int(c * alpha + b * (1 - alpha)) for c, b in zip(grain_col, bg))
@@ -505,27 +500,11 @@ class Target(Block):
         h, w = frame.shape[:2]
 
         # 0. Ground Drop Shadow under target
-        if LIGHTING_SETTINGS.get("SHADOWS_ENABLED", True):
-            shadow_offset_y = int(FLOOR_Y - (self.cy + self.radius))
-            if 0 <= shadow_offset_y < 160:
-                base_opacity = LIGHTING_SETTINGS.get("SHADOW_OPACITY", 0.45)
-                shadow_alpha = max(0.08, base_opacity * (1.0 - shadow_offset_y / 160.0))
-                
-                angle_rad = math.radians(LIGHTING_SETTINGS.get("LIGHT_ANGLE", 45.0))
-                light_shift_x = int(math.cos(angle_rad) * LIGHTING_SETTINGS.get("SHADOW_OFFSET_X", 15.0) * (1.0 + shadow_offset_y / 120.0))
-                
-                scale_x = LIGHTING_SETTINGS.get("SHADOW_SCALE_X", 1.25)
-                scale_y = LIGHTING_SETTINGS.get("SHADOW_SCALE_Y", 0.35)
-                
-                shadow_w = int(self.radius * scale_x * (1.2 - 0.3 * (shadow_offset_y / 160.0)))
-                shadow_h = int(self.radius * scale_y * (1.0 - 0.4 * (shadow_offset_y / 160.0)))
-                shadow_center = (cx + light_shift_x, int(FLOOR_Y - 4))
-                shadow_col = LIGHTING_SETTINGS.get("SHADOW_COLOR", (10, 15, 20))
-                
-                # ROI-blended in the engine — see blit_ellipse_alpha.
-                blit_ellipse_alpha(frame, shadow_center,
-                                   (max(2, shadow_w), max(2, shadow_h)),
-                                   shadow_col, shadow_alpha)
+        target_scale_x = LIGHTING_SETTINGS.get("SHADOW_SCALE_X", 1.25)
+        target_scale_y = LIGHTING_SETTINGS.get("SHADOW_SCALE_Y", 0.35)
+        shadow_w = int(self.radius * target_scale_x * (1.2 - 0.3 * max(0, min(1, (FLOOR_Y - (self.cy + self.radius)) / 160.0))))
+        shadow_h = int(self.radius * target_scale_y * (1.0 - 0.4 * max(0, min(1, (FLOOR_Y - (self.cy + self.radius)) / 160.0))))
+        draw_ground_shadow(frame, cx, int(self.cy + self.radius), shadow_w, shadow_h)
 
         # Body. The sphere-plus-hand-drawn-face this used to be is gone; the
         # creature is a spec in config.py that the engine rasterises, exactly

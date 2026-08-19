@@ -10,6 +10,7 @@ from config import (
     GRAVITY, FLOOR_Y, RESTITUTION, POWER_FACTOR, MAX_PULL,
     AIR_DRAG, BIRD_BOUNCE, BIRD_LINGER, MIN_DAMAGE_VEL,
     DAMAGE_FACTOR, BLOCK_HEALTH,
+    BLOCK_IMPACT_DAMAGE, BLOCK_IMPACT_MASS_K,
     PINCH_THRESHOLD, THREE_FINGER_PINCH_RADIUS, INPUT_MOVEMENT_MAGNIFICATION,
     Z_CLICK_THRESHOLD_M, Z_CLICK_XY_MAX_PX,
     BLOCK_COLL_Y_STACK, BLOCK_MATERIALS,
@@ -248,14 +249,19 @@ def resolve_block_collision(b1, b2):
             if not static2: b2.vy *= tangent_damping
 
     if impact_speed > MIN_DAMAGE_VEL:
-        damage = (impact_speed - MIN_DAMAGE_VEL) * 2.5
+        # Collapse damage, weighted by who is hitting whom. A flat figure meant
+        # a falling stone slab and a tumbling ice cube did the same thing, and
+        # neither did enough to matter next to a stone block's health — so a
+        # structure could be knocked over without anything in it breaking.
+        base = (impact_speed - MIN_DAMAGE_VEL) * BLOCK_IMPACT_DAMAGE
+        total_m = m1 + m2
         if not static1:
             if getattr(b1, "is_target", False):
                 b1.health = 0
             else:
-                b1.health -= damage
+                b1.health -= base * (BLOCK_IMPACT_MASS_K * m2 / total_m)
         if not static2:
             if getattr(b2, "is_target", False):
                 b2.health = 0
             else:
-                b2.health -= damage
+                b2.health -= base * (BLOCK_IMPACT_MASS_K * m1 / total_m)
