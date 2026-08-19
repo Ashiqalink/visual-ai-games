@@ -42,7 +42,8 @@ CONTROLS = (
 KEYS = (
     ("R", "restart after a crash"),
     ("1 / 2 / 3", "easy / medium / hard — restarts the run at that difficulty"),
-    ("T", "run tracking on / off — a local log, never leaves this machine"),
+    ("T", "run tracking for this session — off unless this machine opted in; "
+          "the log stays on this disk"),
     ("H", "show this card again"),
     ("K", "landmark smoothing on / off"),
     ("Q / ESC", "quit"),
@@ -315,9 +316,11 @@ def main():
     course = GapCourse(diff)
     score = 0
 
-    # Offline diagnostics. Records numbers only -- no frames, no landmarks --
-    # to flappy/data/ on this machine, and reads back with tracker_report.py.
-    # Set FLAPPY_TRACKING=0 to start with it off; T toggles it in game.
+    # Offline diagnostics, off unless this machine opted in: it is an
+    # instrument for tuning here, not something that should follow a copy of
+    # the game to whoever else runs it. `tracker_report.py --enable` switches
+    # it on for this machine; T toggles the current session either way.
+    # Records numbers only -- no frames, no landmarks -- to flappy/data/.
     tracking_on = tracking_enabled()
     tracker = RunTracker(diff, enabled=tracking_on)
     last_frame_t = time.perf_counter()
@@ -427,7 +430,7 @@ def main():
         draw_text(frame, f"Difficulty: {diff['name']}", 20, 110, 0.7, (0, 220, 255))
         # An optional feature that fails quietly is a feature that reads as
         # broken, so the recording state is on the HUD rather than on stdout.
-        draw_text(frame, "REC (local)" if tracking_on else "REC off", 20, 145, 0.6,
+        draw_text(frame, "REC (local only)" if tracking_on else "REC off", 20, 145, 0.6,
                   (0, 200, 120) if tracking_on else (120, 120, 120))
         if latest is not None:
             smoothing_on = latest.get("smoothing_enabled", True)

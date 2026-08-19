@@ -14,7 +14,7 @@ import sys, os, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import tof_flappy as F
+import flappy as F
 
 MEASURED_FPS = 32.5          # what the logs showed before the loop was paced
 OLD_SPEED = {"EASY": 5.0, "MEDIUM": 7.0, "HARD": 9.5}        # px per frame
