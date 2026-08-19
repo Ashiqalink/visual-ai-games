@@ -208,7 +208,7 @@ def _titles() -> list[Title]:
             controls=["Sweep your hand left and right in time",
                       "--beta A - retune the One-Euro speed coupling",
                       "Q or ESC - quit"],
-            aliases=("beat", "baton"), headless=True,
+            aliases=("beat", "baton", "metronome"), headless=True,
         ),
         Title(
             id="depthpong", name="Depth Pong",
