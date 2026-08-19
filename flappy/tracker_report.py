@@ -1,4 +1,4 @@
-"""Read the local ToF Flappy run logs back and diagnose them.
+"""Read this machine's Flappy run logs back and diagnose them.
 
 Offline like the tracker itself: reads `flappy/data/*.jsonl` from this machine
 and prints to your terminal. Standard library only, so any interpreter runs it.
@@ -7,6 +7,11 @@ and prints to your terminal. Standard library only, so any interpreter runs it.
     python tracker_report.py --last 10       # the 10 most recent runs
     python tracker_report.py --difficulty HARD
     python tracker_report.py --runs          # one line per run as well
+    python tracker_report.py --enable        # turn tracking on for THIS machine
+    python tracker_report.py --disable       # and off again
+
+Tracking is off by default on every machine. It records only where someone
+opted in, and what it records never leaves the disk it was written on.
 
 The numbers worth reading first:
 
@@ -32,7 +37,8 @@ import statistics
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from tracker import load_runs, DATA_DIR
+from tracker import (DATA_DIR, OPT_IN_MARKER, disable_here, enable_here,
+                     load_runs, tracking_enabled)
 
 MAX_LAG_FRAMES = 30   # logged frames, i.e. 30 * stride real frames
 
@@ -233,6 +239,21 @@ def report(runs, show_runs=False):
 
 
 def main(argv):
+    # Opting in is per machine and explicit. Nothing records anywhere else.
+    if "--enable" in argv:
+        path = enable_here()
+        print(f"\nRun tracking is ON for this machine."
+              f"\n  marker  {path}"
+              f"\n  logs    {DATA_DIR}"
+              f"\nBoth are gitignored and stay on this disk.\n")
+        return 0
+    if "--disable" in argv:
+        removed = disable_here()
+        tail = "" if removed else " (it was already off)"
+        print(f"\nRun tracking is OFF for this machine.{tail}"
+              f"\nExisting logs are untouched.\n")
+        return 0
+
     show_runs = "--runs" in argv
     runs = load_runs()
 
@@ -242,8 +263,11 @@ def main(argv):
     if "--last" in argv:
         runs = runs[-int(argv[argv.index("--last") + 1]):]
 
+    state = "ON" if tracking_enabled() else "OFF - turn it on with --enable"
+    print(f"\ntracking on this machine: {state}")
     report(runs, show_runs=show_runs)
+    return 0
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    sys.exit(main(sys.argv[1:]) or 0)

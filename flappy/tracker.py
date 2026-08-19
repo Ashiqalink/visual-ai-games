@@ -5,6 +5,12 @@ Everything here is local and stays local. It writes JSON Lines to
 opens no socket, and imports nothing outside the standard library. The data
 directory is gitignored, so a run log cannot be committed by accident.
 
+It is also **off by default on every machine**. Tracking is a development
+instrument for the machine doing the tuning, not something that should follow
+a copy of the game to whoever else runs it, so it starts only where someone
+opted in -- FLAPPY_TRACKING=1, or the marker file that enable_here() writes
+into the (gitignored) data directory.
+
 What it records is numbers only -- no camera frames, no landmarks, no images:
 
     per run     difficulty, score, how it ended, wall duration, frame count
@@ -42,10 +48,46 @@ FRAME_STRIDE = 1
 MAX_FRAMES = 20000
 
 
+# Opt-in marker. Tracking runs only on a machine that has this file, or that
+# sets FLAPPY_TRACKING=1. The file lives inside the gitignored data directory,
+# so it cannot be committed and cannot travel with a copy of the game -- which
+# is the point: this is a development instrument for one machine, not
+# telemetry that follows the build to whoever else runs it.
+OPT_IN_MARKER = os.path.join(DATA_DIR, "tracking-enabled")
+
+
 def tracking_enabled():
-    """Off only if the user says so: FLAPPY_TRACKING=0 in the environment."""
-    return os.environ.get("FLAPPY_TRACKING", "1").strip().lower() not in (
-        "0", "false", "no", "off")
+    """True only where run tracking has been deliberately switched on.
+
+    Off by default, everywhere. `FLAPPY_TRACKING=1` turns it on for one run;
+    creating the marker file turns it on for this machine (see enable_here()).
+    An explicit FLAPPY_TRACKING=0 wins over the marker, so a single run can
+    always be kept out of the log.
+    """
+    env = os.environ.get("FLAPPY_TRACKING", "").strip().lower()
+    if env in ("0", "false", "no", "off"):
+        return False
+    if env in ("1", "true", "yes", "on"):
+        return True
+    return os.path.exists(OPT_IN_MARKER)
+
+
+def enable_here(note=""):
+    """Switch tracking on for this machine by writing the marker."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with io.open(OPT_IN_MARKER, "w", encoding="utf-8") as fh:
+        fh.write("Run tracking is on for this machine.\n"
+                 "Delete this file to turn it off. It is gitignored and never "
+                 "travels with the game.\n" + (note and note + "\n"))
+    return OPT_IN_MARKER
+
+
+def disable_here():
+    """Switch tracking off for this machine. Existing logs are left alone."""
+    if os.path.exists(OPT_IN_MARKER):
+        os.remove(OPT_IN_MARKER)
+        return True
+    return False
 
 
 class RunTracker:

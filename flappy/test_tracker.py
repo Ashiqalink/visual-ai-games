@@ -117,5 +117,35 @@ short.end("quit", 0)                   # too short: dropped, not logged
 n = len(tracker.load_runs())
 print(f"runs on disk: {n} (expected 5)")
 assert n == 5
+print("core checks OK")
+
+# ── Opt-in ───────────────────────────────────────────────────────────────────
+# Tracking is a development instrument for one machine, not something that
+# should follow a copy of the game to whoever else runs it.
+
+marker = os.path.join(SCRATCH, "tracking-enabled")
+tracker.OPT_IN_MARKER = marker
+os.environ.pop("FLAPPY_TRACKING", None)
+assert tracker.tracking_enabled() is False, "must be off by default everywhere"
+
+os.environ["FLAPPY_TRACKING"] = "1"
+assert tracker.tracking_enabled() is True
+os.environ["FLAPPY_TRACKING"] = "0"
+assert tracker.tracking_enabled() is False
+del os.environ["FLAPPY_TRACKING"]
+
+tracker.DATA_DIR = SCRATCH
+tracker.enable_here()
+assert os.path.exists(marker)
+assert tracker.tracking_enabled() is True, "the marker opts this machine in"
+
+os.environ["FLAPPY_TRACKING"] = "0"      # one run kept out of the log
+assert tracker.tracking_enabled() is False, "an explicit off beats the marker"
+del os.environ["FLAPPY_TRACKING"]
+
+assert tracker.disable_here() is True
+assert tracker.tracking_enabled() is False
+assert tracker.disable_here() is False, "disabling twice is not an error"
+print("opt-in: off by default, marker and env both respected")
 shutil.rmtree(SCRATCH, ignore_errors=True)
 print("OK")
