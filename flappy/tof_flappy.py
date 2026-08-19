@@ -38,6 +38,7 @@ CONTROLS = (
 )
 KEYS = (
     ("R", "restart after a crash"),
+    ("1 / 2 / 3", "easy / medium / hard — restarts the run at that difficulty"),
     ("H", "show this card again"),
     ("K", "landmark smoothing on / off"),
     ("L", "ToF depth stabilizer on / off (hold still 3 s)"),
@@ -52,20 +53,33 @@ KEYS = (
 FINGER_TOP    = 0.15 * H
 FINGER_BOTTOM = 0.85 * H
 
-# How hard the bird chases the fingertip, per frame. Higher = more responsive
-# and twitchier; lower = floatier.
-BIRD_FOLLOW = 0.35
+# Difficulty presets. EASY is the game exactly as it was tuned before the
+# presets existed, so nothing about the default run changed.
+#
+# Each step up raises pipe speed and narrows both the gap and the spacing
+# between pipes, which is what actually tests tracking: less screen time per
+# pipe and a smaller target to hold the fingertip on. "follow" rises with it --
+# the bird has to chase the fingertip harder to reach the next gap in time, at
+# the cost of passing more of the raw tracking jitter through to the bird.
+DIFFICULTIES = (
+    {"name": "EASY",   "speed": 5.0, "gap": 200, "spacing": 400, "follow": 0.35},
+    {"name": "MEDIUM", "speed": 7.0, "gap": 160, "spacing": 320, "follow": 0.45},
+    {"name": "HARD",   "speed": 9.5, "gap": 125, "spacing": 260, "follow": 0.55},
+)
+DEFAULT_DIFFICULTY = 0
 
 def draw_text(img, text, x, y, size=1.0, color=(255, 255, 255), thickness=2):
     cv2.putText(img, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, size, (0, 0, 0), thickness + 2)
     cv2.putText(img, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, size, color, thickness)
 
 class Pipe:
-    def __init__(self, x):
+    def __init__(self, x, gap_size=200):
         self.x = x
         self.width = 60
-        self.gap_y = random.randint(150, H - 150)
-        self.gap_size = 200
+        self.gap_size = gap_size
+        # Keep the whole gap on screen with a little margin, whatever its size.
+        margin = gap_size // 2 + 50
+        self.gap_y = random.randint(margin, H - margin)
         self.passed = False
 
     def update(self, speed):
@@ -84,6 +98,26 @@ class Pipe:
             if by - br < self.gap_y - self.gap_size//2 or by + br > self.gap_y + self.gap_size//2:
                 return True
         return False
+
+
+def refill_pipes(pipes, diff):
+    """Top the list up so pipes exist one full spacing past the right edge.
+
+    The list used to be a fixed pair, which was fine at EASY's 400 px spacing
+    but left HARD's 260 px pair covering only a third of the screen: a new pipe
+    was not spawned until the leftmost one had walked all the way off. Filling
+    by distance instead means every difficulty keeps pipes across the whole
+    width, and the tighter spacings actually read as tighter.
+    """
+    while not pipes or pipes[-1].x < W + diff["spacing"]:
+        x = pipes[-1].x + diff["spacing"] if pipes else W + 200
+        pipes.append(Pipe(x, diff["gap"]))
+    return pipes
+
+
+def new_pipes(diff):
+    """The starting run of pipes for a difficulty."""
+    return refill_pipes([], diff)
 
 def draw_tracking_status(canvas, hand_visible, w=800):
     x0 = w - 120
@@ -118,7 +152,9 @@ def main():
     bird_y = H // 2
     bird_r = 15
     
-    pipes = [Pipe(W + 200), Pipe(W + 600)]
+    diff_idx = DEFAULT_DIFFICULTY
+    diff = DIFFICULTIES[diff_idx]
+    pipes = new_pipes(diff)
     score = 0
     game_over = False
     
@@ -126,6 +162,7 @@ def main():
     cam_frame = None
     hand_visible = False
     tof_stab_on = False
+    smoothing_on = True
 
     # The card is up before the first pipe moves. The pipeline keeps running
     # behind it, so the camera has warmed up and the hand is already tracked by
@@ -160,7 +197,7 @@ def main():
 
         # Smooth bird movement towards target
         if not showing_help:
-            bird_y = bird_y * (1.0 - BIRD_FOLLOW) + target_y * BIRD_FOLLOW
+            bird_y = bird_y * (1.0 - diff["follow"]) + target_y * diff["follow"]
 
         frame = np.zeros((H, W, 3), dtype=np.uint8)
         frame[:] = (40, 30, 20) # Dark background
@@ -168,15 +205,15 @@ def main():
         if not game_over and not showing_help:
             # Update pipes
             for p in pipes:
-                p.update(5.0)
+                p.update(diff["speed"])
                 if not p.passed and p.x + p.width < bird_x:
                     p.passed = True
                     score += 1
             
             # Remove off-screen pipes and add new ones
-            if pipes[0].x < -pipes[0].width:
+            while pipes and pipes[0].x < -pipes[0].width:
                 pipes.pop(0)
-                pipes.append(Pipe(pipes[-1].x + 400))
+            refill_pipes(pipes, diff)
 
             # Collision
             for p in pipes:
@@ -196,10 +233,12 @@ def main():
 
         # Draw UI
         draw_text(frame, f"Score: {score}", 20, 40, 1.0)
-        smoothing_on = latest.get("smoothing_enabled", True) if latest else True
+        draw_text(frame, f"Difficulty: {diff['name']}", 20, 110, 0.7, (0, 220, 255))
+        if latest is not None:
+            smoothing_on = latest.get("smoothing_enabled", True)
         draw_text(frame, f"Smoothing: {'ON' if smoothing_on else 'OFF'}", 20, 80, 0.7,
                   (0, 255, 0) if smoothing_on else (0, 180, 255))
-        draw_text(frame, "Raise/lower your index finger to fly  |  H: how to play  |  K: smoothing  L: ToF stab",
+        draw_text(frame, "Raise/lower your index finger to fly  |  1/2/3: difficulty  |  H: how to play  |  K: smoothing  L: ToF stab",
                   20, H - 20, 0.5, (150, 150, 150))
 
         if game_over:
@@ -237,9 +276,20 @@ def main():
         elif key in (ord('x'), ord('X')):
             pipeline.cancel_stabilization()
             tof_stab_on = False
+        elif key in (ord('1'), ord('2'), ord('3')):
+            # Changing difficulty restarts the run: the pipes already on screen
+            # were laid out for the old spacing and gap, so keeping them would
+            # mix two difficulties into one score.
+            diff_idx = key - ord('1')
+            diff = DIFFICULTIES[diff_idx]
+            score = 0
+            pipes = new_pipes(diff)
+            bird_y = H // 2
+            target_y = float(H // 2)
+            game_over = False
         elif key == ord('r') and game_over:
             score = 0
-            pipes = [Pipe(W + 200), Pipe(W + 600)]
+            pipes = new_pipes(diff)
             bird_y = H // 2
             target_y = float(H // 2)
             game_over = False
