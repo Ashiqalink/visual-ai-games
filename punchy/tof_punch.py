@@ -17,9 +17,17 @@ from engine_bootstrap import ensure_engine
 ensure_engine()
 
 from instructions import draw_card
+from tracker import RunTracker, tracking_enabled
 from visual_ai import VisionPipeline
 
 W, H = 800, 600
+
+# How many frames of depth history the punch detector measures against, and how
+# big a drop has to be to count. Named here rather than inline so the tracker
+# can log the threshold a run was played at -- a log that does not say which
+# threshold produced it cannot answer whether the threshold was right.
+Z_HISTORY = 10
+Z_PUNCH_THRESHOLD = 0.02  # Lowered from 0.08 (simulated depth changes are smaller)
 
 TITLE = "ToF Punch — hit it with depth"
 GOAL = ("Punch toward the camera to smash the target before the red ring "
@@ -130,7 +138,6 @@ def main():
     
     # Z velocity tracking
     z_history = []
-    Z_PUNCH_THRESHOLD = 0.02  # Lowered from 0.08 (simulated depth changes are smaller)
     lost_frames = 0
     
     punch_cooldown = 0
@@ -151,7 +158,27 @@ def main():
     # so depth history has already filled by the time the player throws a punch.
     showing_help = True
 
+    # Offline run tracking. Off unless this machine opted in; the log stays in
+    # punchy/data and goes nowhere. `tracker_report.py --enable` switches it on.
+    tracking_on = tracking_enabled()
+    tracker = RunTracker({
+        "threshold": Z_PUNCH_THRESHOLD,
+        "z_history": Z_HISTORY,
+        "cooldown_frames": 15,
+        "target_frames": target.max_timer,
+        # The target timer counts loop iterations, not seconds, so the budget is
+        # nominal at the loop's 16 ms pacing. Hit times are measured in real ms.
+        "target_budget_ms": target.max_timer * 16.0,
+        "tof_simulated": bool(getattr(pipeline, "tof_simulated", False)),
+    }, enabled=tracking_on)
+    print(f"[tracker] run logging: {'ON (local file)' if tracking_on else 'OFF'}")
+    prev_tick = time.perf_counter()
+
     while True:
+        now = time.perf_counter()
+        frame_ms = (now - prev_tick) * 1000.0
+        prev_tick = now
+
         try:
             new_data = ai_queue.get_nowait()
             latest = new_data
@@ -165,7 +192,7 @@ def main():
             if hand_visible:
                 tof_z = latest.get("tof_z_m", 0.45)
                 z_history.append(tof_z)
-                if len(z_history) > 10:  # 10 frames window
+                if len(z_history) > Z_HISTORY:
                     z_history.pop(0)
                 lost_frames = 0
             else:
@@ -173,8 +200,17 @@ def main():
                 if lost_frames > 5:
                     z_history.clear()
 
+        # The depth the meter shows, and the one the tracker logs: the newest
+        # sample while the hand is tracked, and the resting default otherwise.
+        current_z = z_history[-1] if z_history else 0.45
+        stab_state = (latest_data.get("stabilizer_state", "inactive")
+                      if latest_data else "inactive")
+        if not showing_help:
+            tracker.frame(current_z, hand_visible, frame_ms, stab_state)
+
         # Detect Punch
         punch_detected = False
+        punch_delta = punch_baseline = 0.0
         if len(z_history) >= 3 and punch_cooldown == 0 and not showing_help:
             # Baseline is the furthest Z in recent history (to account for noise)
             z_baseline = max(z_history[:-1])
@@ -183,6 +219,8 @@ def main():
             delta_z = z_baseline - current_z
             if delta_z >= Z_PUNCH_THRESHOLD:
                 punch_detected = True
+                punch_delta = delta_z
+                punch_baseline = z_baseline
                 punch_cooldown = 15  # prevent multi-hits
                 z_history.clear()
         
@@ -200,6 +238,10 @@ def main():
         if punch_detected:
             bg_flash = 80
             if target is not None:
+                age_ms = (time.time() - target.spawn_time) * 1000.0
+                tracker.punch(punch_delta, punch_baseline, age_ms,
+                              Z_PUNCH_THRESHOLD)
+                tracker.target_resolved("hit", age_ms)
                 score += 1
                 for _ in range(40):
                     particles.append(Particle(target.x, target.y))
@@ -212,6 +254,8 @@ def main():
             if not showing_help:
                 target.timer -= 1
                 if target.timer <= 0:
+                    tracker.target_resolved(
+                        "miss", (time.time() - target.spawn_time) * 1000.0)
                     misses += 1
                     target = Target()
             target.draw(frame)
@@ -251,7 +295,6 @@ def main():
         draw_tracking_status(frame, hand_visible, W)
 
         # ── Stabilizer HUD badge ──────────────────────────────────────────────
-        stab_state = latest_data.get("stabilizer_state", "inactive") if latest_data else "inactive"
         stab_noise = latest_data.get("stabilizer_noise_amp", 0.0) if latest_data else 0.0
         
         if stab_state == "sampling":
@@ -291,6 +334,13 @@ def main():
             # key that dismisses the card should not also start a calibration.
             if key != 255:
                 showing_help = False
+                # The run starts here, not at launch: time spent reading the
+                # card is not play, and charging it to the first target would
+                # put a minute of reading into the time-to-hit figure.
+                if not tracker.frames:
+                    tracker = RunTracker(tracker.settings, enabled=tracking_on)
+                if target is not None:
+                    target.spawn_time = time.time()
         elif key in (ord('h'), ord('H')):
             showing_help = True
         elif key == ord('s'):                          # 3-second calibration
@@ -299,6 +349,8 @@ def main():
             pipeline.begin_stabilization(duration=5.0)
         elif key == ord('x'):                          # disable
             pipeline.disable_stabilization()
+
+    tracker.end("quit", score, misses)
 
     pipeline.stop()
     cv2.destroyAllWindows()
