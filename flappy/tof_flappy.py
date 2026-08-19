@@ -102,6 +102,9 @@ def main():
         result_queue=ai_queue,
         width=W,
         height=H,
+        # Flappy steers off index-finger height alone and reads no face key,
+        # so the face graph was pure cost — 3.1 ms/frame of inference.
+        detect_face=False,
     )
     # Force ToF simulated true for testing, but keep camera on so we can simulate ToF depth!
     pipeline.tof_simulated = True

@@ -112,6 +112,9 @@ def main():
         result_queue=ai_queue,
         width=W,
         height=H,
+        # Punchy reads ToF depth and hand position only, never a face key,
+        # so the face graph was pure cost — 3.1 ms/frame of inference.
+        detect_face=False,
     )
     pipeline.tof_simulated = True
     pipeline.disable_camera = False

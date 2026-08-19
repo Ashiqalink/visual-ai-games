@@ -177,6 +177,10 @@ def main():
         camera_index=0,
         # Adaptive EMA smoothing baseline (0.20 provides smooth aiming without lag).
         smooth_alpha=SMOOTH_ALPHA,
+        # Sling is driven entirely by hand signs and never reads target_x,
+        # face_visible or face_box, so the face graph was 3.1 ms/frame of
+        # inference feeding keys nothing here looks at.
+        detect_face=False,
     )
     pipeline.start()
 
