@@ -133,32 +133,13 @@ class Bird:
         r = int(self.radius * scale)
         col = COLOURS[self.kind]
 
-        # 0. Ground Drop Shadow under bird (using global LIGHTING_SETTINGS)
-        if LIGHTING_SETTINGS.get("SHADOWS_ENABLED", True):
-            shadow_offset_y = int(FLOOR_Y - self.y)
-            if 0 < shadow_offset_y < 160:
-                base_opacity = LIGHTING_SETTINGS.get("SHADOW_OPACITY", 0.45)
-                shadow_alpha = max(0.08, base_opacity * (1.0 - shadow_offset_y / 160.0))
-                
-                # Dynamic horizontal shadow displacement derived from LIGHT_ANGLE
-                angle_rad = math.radians(LIGHTING_SETTINGS.get("LIGHT_ANGLE", 45.0))
-                light_shift_x = int(math.cos(angle_rad) * LIGHTING_SETTINGS.get("SHADOW_OFFSET_X", 15.0) * (1.0 + shadow_offset_y / 120.0))
-                
-                scale_x = LIGHTING_SETTINGS.get("SHADOW_SCALE_X", 1.25)
-                scale_y = LIGHTING_SETTINGS.get("SHADOW_SCALE_Y", 0.35)
-                
-                shadow_w = int(r * scale_x * (1.2 - 0.3 * (shadow_offset_y / 160.0)))
-                shadow_h = int(r * scale_y * (1.0 - 0.4 * (shadow_offset_y / 160.0)))
-                shadow_center = (cx + light_shift_x, int(FLOOR_Y - 4))
-                shadow_col = LIGHTING_SETTINGS.get("SHADOW_COLOR", (10, 15, 20))
-                
-                # Draw translucent dark oval drop shadow onto frame.
-                # The engine helper blends only the ellipse's bounding box; the
-                # frame.copy() + full-canvas addWeighted this replaces blended
-                # 2.8 MB to itself outside the oval, for nothing.
-                blit_ellipse_alpha(frame, shadow_center,
-                                   (max(2, shadow_w), max(2, shadow_h)),
-                                   shadow_col, shadow_alpha)
+        # 0. Ground Drop Shadow under bird
+        from ui import draw_ground_shadow  # local: ui imports bird, avoid circular import
+        shadow_scale_x = LIGHTING_SETTINGS.get("SHADOW_SCALE_X", 1.25)
+        shadow_scale_y = LIGHTING_SETTINGS.get("SHADOW_SCALE_Y", 0.35)
+        shadow_w = int(r * shadow_scale_x * (1.2 - 0.3 * max(0, min(1, (FLOOR_Y - self.y) / 160.0))))
+        shadow_h = int(r * shadow_scale_y * (1.0 - 0.4 * max(0, min(1, (FLOOR_Y - self.y) / 160.0))))
+        draw_ground_shadow(frame, cx, int(self.y), shadow_w, shadow_h)
 
         # 1. Trail (behind bird)
         if self.launched and len(self.trail) > 1:

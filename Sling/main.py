@@ -119,10 +119,11 @@ def _draw_system_metrics(canvas: np.ndarray):
             except Exception:
                 _cached_gpu_str = "N/A"
             
-    text = f"CPU: {_cached_cpu:.1f}% | GPU: {_cached_gpu_str}"
-    cv2.rectangle(canvas, (10, 10), (310, 42), (0, 0, 0), -1)
-    cv2.rectangle(canvas, (10, 10), (310, 42), (50, 200, 255), 1)
-    cv2.putText(canvas, text, (20, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2, cv2.LINE_AA)
+    # Small single line under the score card — the boxed cyan banner this used
+    # to be sat directly on top of the score.
+    text = f"CPU {_cached_cpu:.0f}%  GPU {_cached_gpu_str}"
+    cv2.putText(canvas, text, (20, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.42,
+                (120, 140, 150), 1, cv2.LINE_AA)
 
 _cached_preview: np.ndarray | None = None
 
@@ -360,13 +361,13 @@ def main():
             dix = ix
             diy = iy
 
-            # Index fingertip ring — the whole cursor. The pinch-midpoint disc
-            # and the "FIRE!" flash that used to live here sat on top of the
-            # bird and the slingshot band at the exact moment the player is
-            # aiming. Pinch and fire state now read off the HAND SIGN CONTROL
-            # panel in the top-right corner, which is out of the play area.
-            cv2.circle(canvas, (dix, diy), 14, CURSOR_INDEX_COL, 2)
-            cv2.circle(canvas, (dix, diy),  5, CURSOR_INDEX_COL, -1)
+            # Index fingertip ring — the whole cursor, tinted by the current
+            # hand sign so grab/release state is legible without looking away
+            # at the corner panel (orange fist, green open hand).
+            _, cur_col = ui.SIGN_STYLE.get(gesture.get("hand_sign", "unknown"),
+                                           ui.SIGN_STYLE["unknown"])
+            cv2.circle(canvas, (dix, diy), 14, cur_col, 2, cv2.LINE_AA)
+            cv2.circle(canvas, (dix, diy),  5, cur_col, -1, cv2.LINE_AA)
 
         # ── Camera preview — top-right corner ─────────────────────────────
         _paste_cam(canvas, cam_frame, new_frame=cam_is_new)

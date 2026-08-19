@@ -16,12 +16,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'visual ai game
 # it on the path; doing it here too means ui.py imports standalone as well.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from visual_ai import Renderer3D, Mesh3D, Transform3D, Camera3D, Material, predict_projectile_trajectory
+from visual_ai.imaging import blit_ellipse_alpha
 
 from instructions import draw_card
 
 from bird import Bird
 from config import (
     GRAVITY, AIR_DRAG,
+    FLOOR_Y,
     BIRD_ORDER, 
     BIRD_COLOURS as COLOURS, 
     BIRD_RADII as RADII,
@@ -32,6 +34,8 @@ from config import (
     CAROUSEL_Y,
     CAROUSEL_SPACING,
     CAROUSEL_PANEL_H,
+    LEVEL_NAMES,
+    LIGHTING_SETTINGS,
     # Pinch and fire used to be drawn on the canvas by main.py. They are panel
     # rows now, and keep their original colours so the meaning carries over.
     CURSOR_PINCH_COL,
@@ -52,6 +56,60 @@ _trophy_3d_mesh = Mesh3D.create_pyramid(width=45.0, height=60.0)
 _trophy_angle_3d = 0.0
 
 
+
+
+# ── Ground shadow helper ──────────────────────────────────────────────────────
+
+def draw_ground_shadow(frame: np.ndarray, cx: int, cy_bottom: int,
+                       shadow_w: int, shadow_h: int,
+                       min_alpha: float = 0.08,
+                       max_range: int = 160,
+                       range_divisor: float = 160.0,
+                       light_divisor: float = 120.0,
+                       center_y_offset: int = 4):
+    """Draw a ground-projected drop shadow ellipse under an object.
+
+    Parameters
+    ----------
+    cx : int
+        Horizontal centre of the source object (px).
+    cy_bottom : int
+        Bottom edge of the source object (px), used for shadow distance.
+    shadow_w, shadow_h : int
+        Base ellipse half-widths before distance attenuation.
+    min_alpha : float
+        Floor opacity so shadows remain visible at max range.
+    max_range : int
+        Maximum shadow_offset_y before the shadow is culled.
+    range_divisor : float
+        Divisor for the distance attenuation formula.
+    light_divisor : float
+        Divisor for the horizontal light-shift parallax.
+    center_y_offset : int
+        Vertical offset from FLOOR_Y for the shadow centre.
+    """
+    if not LIGHTING_SETTINGS.get("SHADOWS_ENABLED", True):
+        return
+    shadow_offset_y = int(FLOOR_Y - cy_bottom)
+    if not (0 <= shadow_offset_y < max_range):
+        return
+
+    base_opacity = LIGHTING_SETTINGS.get("SHADOW_OPACITY", 0.45)
+    shadow_alpha = max(min_alpha,
+                       base_opacity * (1.0 - shadow_offset_y / range_divisor))
+
+    angle_rad = math.radians(LIGHTING_SETTINGS.get("LIGHT_ANGLE", 45.0))
+    light_shift_x = int(
+        math.cos(angle_rad)
+        * LIGHTING_SETTINGS.get("SHADOW_OFFSET_X", 15.0)
+        * (1.0 + shadow_offset_y / light_divisor)
+    )
+
+    shadow_col = LIGHTING_SETTINGS.get("SHADOW_COLOR", (10, 15, 20))
+    shadow_center = (cx + light_shift_x, int(FLOOR_Y - center_y_offset))
+    blit_ellipse_alpha(frame, shadow_center,
+                       (max(2, shadow_w), max(2, shadow_h)),
+                       shadow_col, shadow_alpha)
 
 
 def _text(frame, txt, pos, scale=0.7, col=HUD_TEXT, thickness=1):
@@ -77,14 +135,71 @@ def draw_rect_alpha(frame: np.ndarray, x1: int, y1: int, x2: int, y2: int,
     cv2.addWeighted(rect, alpha, sub, 1.0 - alpha, 0, sub)
 
 
+_bg_cache: np.ndarray | None = None
+
+
+def _build_background(w: int, h: int, floor_y: int) -> np.ndarray:
+    """Paint the full scene backdrop once: gradient sky, sun, clouds, layered
+    hills and a shaded ground strip. Every per-frame cost the old tint pass
+    paid is now a single memcpy in draw_ground."""
+    bg = np.zeros((h, w, 3), dtype=np.uint8)
+
+    # Sky — deep blue at the top easing into a warm pale horizon.
+    t = np.linspace(0.0, 1.0, floor_y, dtype=np.float32)[:, None]
+    top = np.array([150, 96, 38], np.float32)     # BGR deep sky blue
+    hor = np.array([212, 202, 156], np.float32)   # pale warm horizon
+    bg[:floor_y] = (top[None, :] * (1 - t) + hor[None, :] * t)[:, None, :].astype(np.uint8)
+
+    # Sun with a soft glow, upper right (away from the slingshot on the left).
+    sun_x, sun_y = int(w * 0.82), int(floor_y * 0.20)
+    for r, a in ((70, 0.10), (48, 0.16), (30, 0.30)):
+        ov = bg.copy()
+        cv2.circle(ov, (sun_x, sun_y), r, (200, 235, 255), -1, cv2.LINE_AA)
+        cv2.addWeighted(ov, a, bg, 1 - a, 0, bg)
+    cv2.circle(bg, (sun_x, sun_y), 20, (210, 245, 255), -1, cv2.LINE_AA)
+
+    # Clouds — flat stylised puffs, low alpha so they stay behind the action.
+    ov = bg.copy()
+    for cx0, cy0, s in ((int(w*0.16), int(floor_y*0.18), 1.0),
+                        (int(w*0.52), int(floor_y*0.10), 0.8),
+                        (int(w*0.68), int(floor_y*0.30), 0.65)):
+        for dx, dy, rw, rh in ((-40, 4, 42, 16), (0, -8, 52, 22), (44, 4, 38, 15)):
+            cv2.ellipse(ov, (cx0 + int(dx*s), cy0 + int(dy*s)),
+                        (int(rw*s), int(rh*s)), 0, 0, 360, (250, 250, 245), -1, cv2.LINE_AA)
+    cv2.addWeighted(ov, 0.45, bg, 0.55, 0, bg)
+
+    # Two hill layers on the horizon — far one hazier, near one greener.
+    xs = np.arange(w)
+    far_y = (floor_y - 58 - 26 * np.sin(xs / 210.0 + 0.8)
+             - 12 * np.sin(xs / 66.0 + 2.1)).astype(np.int32)
+    near_y = (floor_y - 26 - 18 * np.sin(xs / 150.0 + 3.4)
+              - 8 * np.sin(xs / 48.0)).astype(np.int32)
+    for ys, col in ((far_y, (150, 140, 96)), (near_y, (96, 122, 66))):
+        pts = np.vstack([np.column_stack([xs, ys]),
+                         [[w - 1, floor_y], [0, floor_y]]]).astype(np.int32)
+        cv2.fillPoly(bg, [pts], col)
+
+    # Ground — vertical gradient with a bright grass lip at the floor line.
+    gt = np.linspace(0.0, 1.0, h - floor_y, dtype=np.float32)[:, None]
+    g_top = np.array([64, 142, 74], np.float32)
+    g_bot = np.array([34, 84, 44], np.float32)
+    bg[floor_y:] = (g_top[None, :] * (1 - gt) + g_bot[None, :] * gt)[:, None, :].astype(np.uint8)
+    cv2.rectangle(bg, (0, floor_y), (w, floor_y + 4), (80, 178, 96), -1)
+    # Sparse deterministic grass tufts so the strip is not a flat band.
+    for gx in range(12, w, 46):
+        gy = floor_y + 14 + (gx * 7) % 26
+        cv2.line(bg, (gx, gy), (gx - 3, gy - 6), (52, 118, 60), 1, cv2.LINE_AA)
+        cv2.line(bg, (gx, gy), (gx + 3, gy - 7), (52, 118, 60), 1, cv2.LINE_AA)
+    return bg
+
+
 def draw_ground(frame: np.ndarray, floor_y: int = 660):
-    """Draw semi-transparent sky gradient + ground strip."""
+    """Blit the cached painted backdrop (sky, hills, ground) onto the frame."""
+    global _bg_cache
     h, w = frame.shape[:2]
-    # Sky blue tint at top (alpha blended via ROI slice, no frame.copy())
-    draw_rect_alpha(frame, 0, 0, w, floor_y, (200, 160, 80), 0.18)
-    # Ground
-    cv2.rectangle(frame, (0, floor_y), (w, h), (40, 130, 60), -1)
-    cv2.rectangle(frame, (0, floor_y), (w, floor_y+6), (30, 100, 45), -1)
+    if _bg_cache is None or _bg_cache.shape[0] != h or _bg_cache.shape[1] != w:
+        _bg_cache = _build_background(w, h, floor_y)
+    np.copyto(frame, _bg_cache)
 
 
 def draw_carousel(frame: np.ndarray, bird_types: list, selected_idx: int, rot_angle_3d: float = 0.0):
@@ -112,8 +227,8 @@ def draw_carousel(frame: np.ndarray, bird_types: list, selected_idx: int, rot_an
     panel_w = spacing * len(bird_types) + 80
     panel_h = CAROUSEL_PANEL_H
     px      = cx - panel_w // 2
-    draw_rect_alpha(frame, px, cy - 60, px + panel_w, cy + panel_h - 60, (20, 20, 20), 0.6)
-    cv2.rectangle(frame, (px, cy-60), (px+panel_w, cy+panel_h-60), (80, 80, 80), 2)
+    draw_rect_alpha(frame, px, cy - 60, px + panel_w, cy + panel_h - 60, (28, 22, 16), 0.55)
+    cv2.rectangle(frame, (px, cy-60), (px+panel_w, cy+panel_h-60), (140, 110, 70), 1, cv2.LINE_AA)
 
     total = len(bird_types)
     for i, kind in enumerate(bird_types):
@@ -142,9 +257,9 @@ def draw_carousel(frame: np.ndarray, bird_types: list, selected_idx: int, rot_an
         _text(frame, kind.title(), (bx - 20, cy + int(RADII[kind]*scale) + 20),
               scale=0.55 if is_sel else 0.45, col=label_col)
 
-    # Instruction
-    _text(frame, "3-FINGER LOCK: Keep apart to lock -> Pinch 3 to select/fire | 3D Engine Active",
-          (cx - 290, cy + 95), scale=0.52, col=(180, 220, 255))
+    # Instruction — matches the actual control scheme (fist grab / open fire).
+    _text(frame, "Point at a bird, close a FIST to pick it up",
+          (cx - 175, cy + 95), scale=0.55, col=(180, 220, 255))
 
 
 
@@ -272,89 +387,56 @@ def draw_hud(
     gesture: dict | None = None,
     magnification: float = 2.0,
 ):
-    """Render full head-up display overlay (modifies frame in-place)."""
+    """Render full head-up display overlay (modifies frame in-place).
+
+    Deliberately minimal: one score card top-left, one slim hand-state strip
+    under the camera preview, birds-left bottom-left, and a single hint line.
+    The debug telemetry (finger pips, pinch/fire lamps, Z/drift, jitter) that
+    used to fill the right panel is gone — the tracking lamp, the sign and the
+    status line carry the same message.
+    """
     h, w = frame.shape[:2]
 
-    # Fingertip markers on the canvas — the only on-hand drawing left
-    if gesture:
-        draw_hand_sign_overlay(frame, gesture)
+    # ── Score card — top-left ─────────────────────────────────────────────
+    draw_rect_alpha(frame, 14, 14, 236, 92, (24, 20, 14), 0.55)
+    cv2.rectangle(frame, (14, 14), (236, 92), (140, 110, 70), 1, cv2.LINE_AA)
+    _text(frame, "SCORE", (24, 34), scale=0.45, col=(170, 190, 200))
+    _text(frame, f"{score:,}", (24, 66), scale=1.0, col=(0, 255, 200), thickness=2)
+    lvl_name = LEVEL_NAMES[level_idx] if 0 <= level_idx < len(LEVEL_NAMES) else str(level_idx + 1)
+    _text(frame, f"Level {level_idx + 1} - {lvl_name}", (24, 85), scale=0.45, col=(200, 200, 200))
+    _text(frame, f"{fps} fps", (176, 34), scale=0.4, col=(130, 140, 150))
 
-    # Top-left info box
-    _text(frame, f"SCORE: {score}", (20, 40), scale=0.9, col=(0, 255, 200), thickness=2)
-    _text(frame, f"LEVEL: {level_idx + 1}", (20, 70), scale=0.6, col=(200, 200, 200))
-    _text(frame, f"FPS: {fps}", (20, 95), scale=0.5, col=(150, 150, 150))
-    _text(frame, f"MAGNIFICATION: {magnification:.1f}x", (20, 118), scale=0.5, col=(0, 220, 255))
-
-    # Birds remaining icons
-    _text(frame, "BIRDS LEFT:", (20, h - 50), scale=0.5, col=(180, 180, 180))
+    # ── Birds remaining — bottom-left ─────────────────────────────────────
+    n = max(1, len(birds_left))
+    draw_rect_alpha(frame, 14, h - 72, 70 + n * 52, h - 12, (24, 20, 14), 0.5)
+    _text(frame, "BIRDS", (24, h - 54), scale=0.42, col=(170, 190, 200))
     for i, kind in enumerate(birds_left):
-        tmp = Bird(kind, 100 + i * 55, h - 30)
-        tmp.draw(frame, scale=0.7)
+        tmp = Bird(kind, 96 + i * 52, h - 34)
+        tmp.draw(frame, scale=0.65)
 
-    # ── Hand Sign & Gesture Panel — top-right (below camera box) ──────────
-    #
-    # This panel is now the only place the input state is legible: the cursor
-    # on the canvas is a bare ring, so anything the player needs to reason
-    # about — tracking, sign, pinch, fire, phase — has to be readable here.
-    box_w, box_h = 250, 232
-    box_x, box_y = w - box_w - 12, 187   # top-right, directly below camera preview
-
-    draw_rect_alpha(frame, box_x, box_y, box_x + box_w, box_y + box_h, (15, 18, 28), 0.75)
-    cv2.rectangle(frame, (box_x, box_y), (box_x + box_w, box_y + box_h), (60, 90, 130), 1)
-
+    # ── Hand-state strip — top-right, below camera preview ────────────────
     hand_visible = gesture.get("hand_visible", False) if gesture else False
     sign = gesture.get("hand_sign", "unknown") if gesture else "unknown"
-    fingers_ext = gesture.get("fingers_extended", (False,) * 5) if gesture else (False,) * 5
     smoothing_on = gesture.get("smoothing_enabled", True) if gesture else True
-    is_pinching = gesture.get("is_pinching", False) if gesture else False
     sign_label, sign_col = SIGN_STYLE.get(sign, SIGN_STYLE["unknown"])
 
-    # Title, with a tracking lamp on the right edge. Losing the hand is the
-    # single most confusing failure — the cursor simply stops — so it gets the
-    # most prominent slot in the panel.
-    _text(frame, "HAND SIGN CONTROL", (box_x + 8, box_y + 18), scale=0.48, col=(0, 220, 255), thickness=2)
+    box_w, box_h = 250, 78
+    box_x, box_y = w - box_w - 12, 187
+    draw_rect_alpha(frame, box_x, box_y, box_x + box_w, box_y + box_h, (15, 18, 28), 0.65)
+    cv2.rectangle(frame, (box_x, box_y), (box_x + box_w, box_y + box_h), (60, 90, 130), 1, cv2.LINE_AA)
+
+    # Tracking lamp + current sign on one row. Losing the hand is the single
+    # most confusing failure, so it keeps the brightest slot.
     lamp_col = (0, 255, 120) if hand_visible else (60, 60, 200)
-    cv2.circle(frame, (box_x + box_w - 16, box_y + 13), 5, lamp_col, -1)
-    _text(frame, "TRACKING" if hand_visible else "NO HAND",
-          (box_x + box_w - 78, box_y + 34), scale=0.36, col=lamp_col, thickness=1)
+    cv2.circle(frame, (box_x + 14, box_y + 16), 5, lamp_col, -1, cv2.LINE_AA)
+    _text(frame, "HAND" if hand_visible else "NO HAND", (box_x + 26, box_y + 21),
+          scale=0.42, col=lamp_col, thickness=1)
+    _text(frame, sign_label, (box_x + 130, box_y + 22), scale=0.55, col=sign_col, thickness=2)
 
-    # Current sign
-    _text(frame, f"Sign: {sign_label}", (box_x + 8, box_y + 44), scale=0.55, col=sign_col, thickness=2)
-
-    # Per-finger extension pips — the raw signal behind the classification, so a
-    # misread sign can be traced to the finger responsible.
-    pip_names = ("T", "I", "M", "R", "P")
-    for i, (nm, ext) in enumerate(zip(pip_names, fingers_ext)):
-        px = box_x + 12 + i * 30
-        py = box_y + 70
-        col_p = (0, 255, 120) if ext else (70, 70, 85)
-        cv2.circle(frame, (px, py), 9, col_p, -1 if ext else 2)
-        _text(frame, nm, (px - 4, py + 22), scale=0.38, col=(170, 170, 180), thickness=1)
-
-    # ── Pinch and fire lamps — what main.py used to draw on the hand ──────
-    global _fire_flash_until
-    now = time.time()
-    if click_fired:
-        _fire_flash_until = now + _FIRE_FLASH_SECONDS
-    firing = now < _fire_flash_until
-
-    pinch_col = CURSOR_PINCH_COL if is_pinching else (70, 70, 85)
-    cv2.circle(frame, (box_x + 14, box_y + 112), 6, pinch_col, -1 if is_pinching else 2)
-    _text(frame, "PINCH" if is_pinching else "pinch", (box_x + 26, box_y + 117),
-          scale=0.42, col=pinch_col, thickness=2 if is_pinching else 1)
-
-    fire_col = CURSOR_FIRE_COL if firing else (70, 70, 85)
-    cv2.circle(frame, (box_x + 120, box_y + 112), 6, fire_col, -1 if firing else 2)
-    _text(frame, "FIRED" if firing else "fire", (box_x + 132, box_y + 117),
-          scale=0.42, col=fire_col, thickness=2 if firing else 1)
-
-    # Status line — always the instruction for what to do next. The fire event
-    # itself is the lamp above; repeating it here would cost the one row that
-    # tells the player what to do with their hand.
+    # Status line — what to do next in the current phase.
     if state == "READY":
-        # READY reverses the meaning of both signs: the fist is carrying the bird
-        # rather than drawing it, and opening the hand puts it back instead of
-        # firing. Saying "open to fire" here would be actively wrong.
+        # READY reverses the signs: the fist carries the bird, opening it puts
+        # the bird back rather than firing — "open to fire" would be wrong here.
         st_txt, st_col = ("HOLD STILL to lock aim" if sign == "fist"
                           else "Re-close fist to keep the bird"), (0, 200, 255)
     elif sign == "fist":
@@ -362,55 +444,30 @@ def draw_hud(
     elif sign == "open_palm":
         st_txt, st_col = "HAND OPEN - ready", (0, 255, 120)
     else:
-        st_txt, st_col = "Make a fist to grab", (140, 140, 150)
+        st_txt, st_col = "Make a fist to grab", (150, 150, 160)
+    _text(frame, st_txt, (box_x + 8, box_y + 46), scale=0.44, col=st_col, thickness=2)
 
-    _text(frame, st_txt, (box_x + 8, box_y + 140), scale=0.44, col=st_col, thickness=2)
+    # Phase + smoothing state, tiny. Without the phase, a fist that does
+    # nothing is indistinguishable from a fist that was not recognised.
+    _text(frame, f"Phase: {state}", (box_x + 8, box_y + 66), scale=0.4,
+          col=(0, 200, 235), thickness=1)
+    if not smoothing_on:
+        _text(frame, "raw (K)", (box_x + 150, box_y + 66), scale=0.38, col=(0, 180, 255))
+    _text(frame, f"{magnification:.1f}x", (box_x + 205, box_y + 66), scale=0.38,
+          col=(150, 170, 185))
 
-    # Phase + click mode: which of SELECTION / ARMED / FLIGHT the game thinks
-    # it is in. Without it, a fist that does nothing is indistinguishable from
-    # a fist that was not recognised.
-    _text(frame, f"Phase: {state}", (box_x + 8, box_y + 160), scale=0.42,
-          col=(0, 220, 255), thickness=1)
-    if click_mode:
-        _text(frame, f"Mode: {click_mode}", (box_x + 130, box_y + 160), scale=0.38,
-              col=(150, 160, 175), thickness=1)
-
-    # Raw push / drift, previously computed and passed in but never displayed.
-    _text(frame, f"Z push: {z_debug:+.3f}   Drift: {xy_drift:.1f}px",
-          (box_x + 8, box_y + 178), scale=0.38, col=(170, 180, 195), thickness=1)
-
-    # Depth, when a ToF source is driving it
-    depth_txt = (f"Depth: {tof_z_m:.2f}m  [{depth_source}]" if tof_active
-                 else f"Depth: {depth_source}")
-    _text(frame, depth_txt[:38], (box_x + 8, box_y + 194), scale=0.34,
-          col=(0, 220, 200) if tof_active else (120, 130, 145), thickness=1)
-
-    # Jitter + smoothing state
-    jitter = gesture.get("jitter", {}) if gesture else {}
-    raw_std = jitter.get("raw_jitter_std", 0.0)
-    smooth_std = jitter.get("smoothed_jitter_std", 0.0)
-    red_pct = jitter.get("jitter_reduction_pct", 0.0)
-
-    j_text = f"Jitter: {smooth_std:.1f}px (Raw: {raw_std:.1f}px | -{red_pct:.0f}%)"
-    _text(frame, j_text, (box_x + 8, box_y + 210), scale=0.38, col=(0, 240, 200), thickness=1)
-
-    sm_txt = "Smoothing: ON" if smoothing_on else "Smoothing: OFF (raw)"
-    sm_col = (120, 140, 160) if smoothing_on else (0, 180, 255)
-    _text(frame, sm_txt, (box_x + 8, box_y + 226), scale=0.34, col=sm_col)
-
-    # ── Key hints — bottom-right ──────────────────────────────────────────
+    # ── Hints — bottom-right, one phase hint + one key line ───────────────
     hints = {
         "SELECTION": "Make a FIST over a bird to grab it",
-        "READY":     "Keep the fist | Bring your hand somewhere comfortable | HOLD STILL to lock aim",
-        "ARMED":     "Move fist to pull | OPEN HAND to fire | Short pull = put the bird back",
+        "READY":     "Keep the fist, move anywhere, HOLD STILL to lock aim",
+        "ARMED":     "Move fist to pull  |  OPEN HAND to fire",
         "FLIGHT":    "Bird in flight...",
     }
     hint = hints.get(state, "")
-    _text(frame, hint, (w - 460, h - 20), scale=0.55, col=(200, 200, 200))
-
-    # Level-switch hint
-    _text(frame, "H: How to play  |  1/2/3: Level  |  +/-: Magnification  |  R: Restart  |  K: Smoothing  |  L: ToF Stab",
-          (w - 700, h - 44), scale=0.45, col=(160, 160, 160))
+    if hint:
+        _text(frame, hint, (w - 440, h - 40), scale=0.55, col=(210, 210, 210))
+    _text(frame, "H help   1/2/3 level   R restart   +/- aim gain",
+          (w - 380, h - 16), scale=0.42, col=(160, 160, 160))
 
 
 # ── How to play ───────────────────────────────────────────────────────────────
