@@ -89,7 +89,35 @@ from visual_ai import VisionPipeline, CPP_ENGINE_AVAILABLE
 _splash("Preparing game...")
 
 from game import Game
+from slingshot import SLING_X, SLING_Y
+from tracker import RunTracker, tracking_enabled
 import ui
+
+# Only the tuning a run's numbers have to be read against — a log that does not
+# say which settings produced it cannot be compared with the next one.
+from config import (
+    AIM_PULL_GAIN as _CFG_GAIN, MIN_FIRE_PULL as _CFG_MIN_PULL,
+    GRIP_RELEASE_OPENNESS as _CFG_GRIP_OPEN,
+    GRIP_RELEASE_FRAMES as _CFG_GRIP_FRAMES,
+    READY_SETTLE_FRAMES as _CFG_SETTLE_FRAMES,
+    READY_SETTLE_RADIUS as _CFG_SETTLE_RADIUS,
+)
+from physics import MAX_PULL as _CFG_MAX_PULL
+
+
+def _tracker_settings() -> dict:
+    """The tuning that a run's numbers only mean anything against."""
+    return {
+        "sling": [SLING_X, SLING_Y],
+        "gain": _CFG_GAIN,
+        "min_fire_pull": _CFG_MIN_PULL,
+        "max_pull": _CFG_MAX_PULL,
+        "smooth_alpha": SMOOTH_ALPHA,
+        "grip_release_openness": _CFG_GRIP_OPEN,
+        "grip_release_frames": _CFG_GRIP_FRAMES,
+        "settle_frames": _CFG_SETTLE_FRAMES,
+        "settle_radius": _CFG_SETTLE_RADIUS,
+    }
 
 # (Window / canvas constants imported from config.py above, before _splash.)
 
@@ -248,6 +276,21 @@ def main():
 
     canvas = np.zeros((FRAME_H, FRAME_W, 3), dtype=np.uint8)
 
+    # Offline run tracking. Off unless this machine opted in; the log stays in
+    # Sling/data and goes nowhere. `tracker_report.py --enable` switches it on.
+    # A run is one attempt at one level, so restarts and level switches close
+    # the current one and open the next — main.py owns that because it is the
+    # only place that sees the keys before the state machine acts on them.
+    tracking_on = tracking_enabled()
+    print(f"[tracker] run logging: {'ON (local file)' if tracking_on else 'OFF'}")
+
+    def _new_run():
+        game.tracker = RunTracker(game.level_idx, _tracker_settings(),
+                                  enabled=tracking_on)
+
+    _new_run()
+    prev_state = game.state
+
     while True:
         # ── Pull latest vision data — drain queue so we never stall ───────
         latest = None
@@ -303,6 +346,11 @@ def main():
             # cannot grab a bird before the player has read what a fist does.
             if key != 255 and key not in (ord('q'), ord('Q'), 27):
                 showing_help = False
+                # The run starts here, not at launch: time spent reading the
+                # card is not play, and it would otherwise be logged as a
+                # minute of a perfectly still hand in SELECTION.
+                if not game.tracker.frames:
+                    _new_run()
             accumulator = 0.0        # do not bank physics steps for the wait
         else:
             if key in (ord('h'), ord('H')):
@@ -334,15 +382,50 @@ def main():
                 pipeline.cancel_stabilization()
                 tof_stab_on = False
 
+            # ── Run boundaries ────────────────────────────────────────────
+            # R restarts and 1/2/3 switch level, both by way of reset(). The
+            # old run has to be closed before that happens — reset() zeroes the
+            # score the run is supposed to be logged with.
+            rotate = None
+            if key in (ord('r'), ord('R')):
+                rotate = "restart"
+            elif key in (ord('1'), ord('2'), ord('3')):
+                rotate = "switch"
+            if rotate:
+                game.tracker.end(rotate, game.score)
+
             # ── Game logic (Input & State) ────────────────────────────────
             game.update_game_state(gesture, key)
+            if rotate:
+                _new_run()          # after the dispatch: level_idx is set by it
             if hasattr(pipeline, "set_movement_magnification"):
                 pipeline.set_movement_magnification(game._AIM_PULL_GAIN)
+
+            # Where the band is being held. During ARMED that is the pull the
+            # aim produced, which is the series the release drift is read from.
+            if game.current_bird is not None:
+                band = (game.current_bird.x, game.current_bird.y)
+            else:
+                band = (SLING_X, SLING_Y)
+            game.tracker.frame(
+                hand_pos=gesture.get("pinch_pos", gesture["index_pos"]),
+                band_pos=band,
+                state=game.state,
+                hand_visible=gesture.get("hand_visible", False),
+                openness=gesture.get("grip_openness", 0.0) or 0.0,
+                frame_ms=frame_time * 1000.0,
+            )
 
             # ── Fixed-Step Physics ────────────────────────────────────────
             while accumulator >= FIXED_DT:
                 game.update_physics()
                 accumulator -= FIXED_DT
+
+            # WIN is decided inside the physics step, DONE when the last bird
+            # is spent. Either ends the run where it ended for the player.
+            if game.state != prev_state and game.state in ("WIN", "DONE"):
+                game.tracker.end(game.state.lower(), game.score)
+            prev_state = game.state
 
         # ── Build solid game canvas (no camera bleed-through) ─────────────
         canvas[:] = BG_COLOR            # deep navy-black background
@@ -380,6 +463,8 @@ def main():
 
         if key in (ord('q'), ord('Q'), 27):
             break
+
+    game.tracker.end("quit", game.score)
 
     pipeline.stop()
     cv2.destroyAllWindows()

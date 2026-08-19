@@ -32,3 +32,4 @@ Thumbs.db
 # committed; read them with each game's tracker_report.py.
 flappy/data/
 punchy/data/
+Sling/data/

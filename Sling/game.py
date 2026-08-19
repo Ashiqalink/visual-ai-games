@@ -23,6 +23,7 @@ Improvements over original:
 import cv2
 import math
 import random
+import time
 import numpy as np
 from bird import Bird
 from config import (BIRD_ORDER, BIRD_COLOURS as COLOURS, BIRD_DAMAGE,
@@ -36,6 +37,7 @@ from physics import (
 )
 import slingshot
 import ui
+from tracker import NullTracker
 from config import (
     PTS_BLOCK, PTS_DEBRIS, PTS_TARGET,
     SCORE_POPUP_LIFETIME, SCORE_POPUP_RISE,
@@ -261,6 +263,10 @@ class Game:
         self.level_idx: int = 0
         self.score: int = 0
         self.fps: int = 0                              # set by main.py each frame
+        # Offline run tracking, off unless main.py hands over a real one. It is
+        # set here rather than in reset() so a restart does not throw away the
+        # tracker main.py is holding; main.py rotates it itself when a run ends.
+        self.tracker = NullTracker()
         self.reset()
 
     # ── Public ────────────────────────────────────────────────────────────────
@@ -309,6 +315,8 @@ class Game:
         self._settle_ref_y: float = float(SLING_Y)
         self._settle_pos: tuple[float, float] | None = None   # where to draw the ring
         self._settle_forced: bool = False              # locked by timeout, not stillness
+        self._ready_t0: float = 0.0                    # when READY began (tracker)
+        self._settle_ms: float = 0.0                   # how long the lock took
         self._shake_frames: int = 0
         self._shake_intensity: int = 0
         self._final_stars: int = 0
@@ -380,6 +388,7 @@ class Game:
                     is_big = b.rect[2] > 20 and b.rect[3] > 20
                     pts = PTS_BLOCK if is_big else PTS_DEBRIS
                 self.score += pts
+                self.tracker.hit(pts)
                 self.score_popups.append(ScorePopup(b.cx, b.cy, pts))
 
                 if not is_target and is_big:
@@ -631,6 +640,7 @@ class Game:
         self._settle_ref_y  = float(hy)
         self._settle_pos    = (float(hx), float(hy))
         self._settle_forced = False
+        self._ready_t0      = time.perf_counter()
         self.state = "READY"
 
     def _lock_anchor(self, x: float, y: float, forced: bool = False):
@@ -647,6 +657,7 @@ class Game:
         self._lost_frames    = 0
         self._is_aiming      = True
         self._settle_forced  = forced
+        self._settle_ms      = (time.perf_counter() - self._ready_t0) * 1000.0
         self.state = "ARMED"
 
     def _still_gripping(self, g: dict) -> bool:
@@ -788,7 +799,7 @@ class Game:
             self._lost_frames += 1
             if (self._lost_frames >= LOST_HAND_FIRE_FRAMES
                     and self._pull_distance() >= MIN_FIRE_PULL):
-                self._fire_bird(bird)
+                self._fire_bird(bird, cause="lost")
                 self._is_aiming = False
                 return
 
@@ -798,7 +809,7 @@ class Game:
             # a shot — this beats any change-of-mind reading on purpose, since a
             # pull that ends high on the screen is still a shot.
             if self._pull_distance() >= MIN_FIRE_PULL:
-                self._fire_bird(bird)
+                self._fire_bird(bird, cause="open")
                 self._is_aiming = False
                 return
 
@@ -856,16 +867,36 @@ class Game:
         # Edge-exit fire fallback while aiming
         if self._armed_timer <= 0 and dist >= MIN_FIRE_PULL:
             if at_edge and self._armed_inside:
-                self._fire_bird(bird)
+                self._fire_bird(bird, cause="edge")
                 self._is_aiming = False
                 return
 
-    def _fire_bird(self, bird: Bird):
-        """Transition from ARMED → FLIGHT."""
+    def _fire_bird(self, bird: Bird, cause: str = "open"):
+        """Transition from ARMED → FLIGHT.
+
+        `cause` says which of the three exits fired: the hand opening ('open'),
+        the hand dropping off the tracker mid-pull ('lost'), or the pull
+        leaving the frame ('edge'). It is passed straight to the tracker and
+        changes nothing about the shot — the three are separated because only
+        the first is a release the player timed.
+        """
         vx, vy = self._launch_velocity()
         bird.vx = vx
         bird.vy = vy
         bird.launched = True
+
+        self.tracker.shot(
+            cause=cause,
+            bird_kind=bird.kind,
+            anchor=(self._aim_anchor_x, self._aim_anchor_y),
+            hand=(self._smoothed_ix, self._smoothed_iy),
+            band=(bird.x, bird.y),
+            velocity=(vx, vy),
+            pull_dist=self._pull_distance(),
+            gain=self._AIM_PULL_GAIN,
+            ready_ms=self._settle_ms,
+            settle_forced=self._settle_forced,
+        )
 
         # Remove by kind so the correct entry is popped regardless of whether
         # selected_idx drifted since the bird was chosen.
@@ -944,6 +975,8 @@ class Game:
             self._next_bird()
 
     def _next_bird(self):
+        # The flight is over, so whatever the shot scored is now final.
+        self.tracker.flight_ended(self.score)
         self.current_bird = None
         if self.bird_queue:
             self.state = "SELECTION"

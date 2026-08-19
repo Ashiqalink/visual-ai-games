@@ -24,3 +24,7 @@ Thumbs.db
 
 # Generated sprite cache (rasterised from config.py specs on first run)
 assets/.sprite-cache/
+
+# Local-only run logs (offline diagnostics). Personal play data -- never
+# committed; read it with Sling/tracker_report.py.
+data/
