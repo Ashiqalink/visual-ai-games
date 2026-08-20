@@ -143,7 +143,6 @@ def main():
     punch_cooldown = 0
     bg_flash = 0
     
-    cam_frame = None
     hand_visible = False
 
     # Pre-calculate gradient background
@@ -200,7 +199,6 @@ def main():
             latest_data = latest
 
         if latest is not None:
-            cam_frame = latest.get("frame")
             hand_visible = latest.get("hand_visible", False)
             if hand_visible:
                 tof_z = latest.get("tof_z_m", 0.45)

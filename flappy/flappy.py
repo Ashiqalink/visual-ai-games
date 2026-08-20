@@ -345,7 +345,6 @@ def main():
     game_over = False
 
     target_y = float(H // 2)
-    cam_frame = None
     hand_visible = False
     smoothing_on = True
 
@@ -371,7 +370,6 @@ def main():
                 break
 
         if latest is not None:
-            cam_frame = latest.get("frame")
             hand_visible = latest.get("hand_visible", False)
             if hand_visible:
                 # Height follows the index fingertip directly.

@@ -273,10 +273,6 @@ def draw_carousel(frame: np.ndarray, bird_types: list, selected_idx: int, rot_an
             cv2.circle(frame, (bx, cy), int(RADII[kind]*scale) + 8,
                        (30, 120, 180), 2)
 
-            # Update 3D showcase rotation on the selected bird
-            pass
-
-
         # Draw miniature bird 2D details
         tmp = Bird(kind, bx, cy)
         tmp.draw(frame, scale=scale)

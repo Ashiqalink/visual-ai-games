@@ -22,41 +22,15 @@ import os
 from physics import GRAVITY, FLOOR_Y, AIR_DRAG, BIRD_BOUNCE, BIRD_LINGER, magnitude, bird_hits_ground
 from config import (
     TRAIL_LEN, SPEED_LINE_THRESHOLD, IMPACT_POP_DURATION, BIRD_IDLE_SPEED,
-    BIRD_ORDER, BIRD_SPECS, BIRD_MESH_SHAPES,
+    BIRD_ORDER, BIRD_SPECS,
     BIRD_RADII as RADII, BIRD_MASSES as MASSES, BIRD_COLOURS as COLOURS,
-    CHARACTER_3D_MATERIALS, LIGHTING_SETTINGS
+    LIGHTING_SETTINGS
 )
-from visual_ai import (
-    Renderer3D, Mesh3D, Transform3D, Camera3D, Vector2,
-    render_creature, rgb_to_bgr, load_image,
-)
+from visual_ai import Vector2, render_creature, rgb_to_bgr, load_image
 from visual_ai.imaging import blit_sprite, blit_ellipse_alpha
 
 # Trail length (number of past positions stored)
 _TRAIL_LEN = TRAIL_LEN
-
-# Shared 3D Camera & Renderer for Bird 3D Mesh rendering
-_bird_cam3d = Camera3D(fov=60.0, position=(0.0, 0.0, 500.0))
-_bird_renderer3d = Renderer3D(
-    camera=_bird_cam3d,
-    light_angle_deg=LIGHTING_SETTINGS.get("LIGHT_ANGLE", 45.0),
-    ambient_intensity=LIGHTING_SETTINGS.get("AMBIENT_INTENSITY", 0.45),
-    light_intensity=LIGHTING_SETTINGS.get("LIGHT_INTENSITY", 0.85),
-)
-
-# Cache 3D mesh geometries per bird kind. The shape each kind uses is declared
-# in config.py alongside its spec, so a new creature does not need an edit here.
-def _build_mesh(kind: str) -> Mesh3D:
-    radius = RADII[kind]
-    shape = BIRD_MESH_SHAPES.get(kind, "sphere")
-    if shape == "pyramid":
-        return Mesh3D.create_pyramid(width=radius * 1.8, height=radius * 2.2)
-    if shape == "capsule":
-        return Mesh3D.create_capsule(radius=radius * 0.85, height=radius * 0.7)
-    return Mesh3D.create_sphere(radius=radius)
-
-
-_bird_3d_meshes = {kind: _build_mesh(kind) for kind in BIRD_ORDER}
 
 _bird_images_2d = {}
 _bird_images_side_2d = {}
@@ -169,35 +143,6 @@ class Bird:
         # 4. Impact pop ring
         if self.impact_timer > 0 and scale >= 1.0:
             self._draw_impact_pop(frame, cx, cy, r)
-
-    def _draw_3d_body(self, frame: np.ndarray, cx: int, cy: int, scale: float):
-        """Render subtle 3D character volume tilt using visual_ai camera/renderer."""
-        h, w = frame.shape[:2]
-        _bird_cam3d.screen_width = float(w)
-        _bird_cam3d.screen_height = float(h)
-        _bird_cam3d.focal_length = (float(w) / 2.0) / math.tan(math.radians(_bird_cam3d.fov / 2.0))
-        _bird_cam3d.position[2] = _bird_cam3d.focal_length
-
-        # Screen to camera translation
-        rel_x = float(cx) - (w / 2.0)
-        rel_y = (h / 2.0) - float(cy)
-
-        # Determine dynamic 3D tilt based on flight angle
-        rx = 0.0
-        ry = 0.0
-        rz = self.rot_z
-        if self.launched and (abs(self.vx) > 0.1 or abs(self.vy) > 0.1):
-            flight_angle = math.degrees(math.atan2(-self.vy, self.vx))
-            ry = flight_angle * 0.4
-            rx = 10.0
-
-        fallback_kind = BIRD_ORDER[0]
-        mesh = _bird_3d_meshes.get(self.kind, _bird_3d_meshes[fallback_kind])
-        mat = CHARACTER_3D_MATERIALS.get(
-            self.kind, CHARACTER_3D_MATERIALS[fallback_kind])
-
-        transform = Transform3D(x=rel_x, y=rel_y, z=0.0, rx=rx, ry=ry, rz=rz, sx=scale*0.95, sy=scale*0.95, sz=scale*0.95)
-        _bird_renderer3d.render_mesh(frame, mesh, transform, material=mat)
 
     @staticmethod
     def _draw_finish(frame: np.ndarray, cx: int, cy: int, r: int, col):
