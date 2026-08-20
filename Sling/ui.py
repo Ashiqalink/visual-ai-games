@@ -121,6 +121,36 @@ def _text(frame, txt, pos, scale=0.7, col=HUD_TEXT, thickness=1):
                 scale, col, thickness, cv2.LINE_AA)
 
 
+def _star_points(cx: float, cy: float, r_outer: float) -> np.ndarray:
+    """Ten alternating outer/inner vertices of a five-pointed star, apex up."""
+    r_inner = r_outer * 0.382                      # classic pentagram ratio
+    return np.array(
+        [(cx + (r_outer if i % 2 == 0 else r_inner) * math.cos(math.radians(-90 + i * 36)),
+          cy + (r_outer if i % 2 == 0 else r_inner) * math.sin(math.radians(-90 + i * 36)))
+         for i in range(10)],
+        dtype=np.int32,
+    )
+
+
+def _draw_star(frame: np.ndarray, cx: int, cy: int, r: int,
+               col: tuple[int, int, int], filled: bool = True, thickness: int = 2):
+    """
+    A five-pointed star drawn as a polygon, with the same drop-shadow as `_text`.
+
+    Polygons rather than a glyph because cv2.putText only speaks Hershey, which
+    is ASCII-only: the '*'/'o' star characters this used to draw rendered as '?'
+    boxes, so the win screen's whole 1/2/3 rating was invisible.
+    """
+    pts = _star_points(cx, cy, r)
+    shadow = _star_points(cx + 2, cy + 2, r)
+    if filled:
+        cv2.fillPoly(frame, [shadow], SHADOW_COL, cv2.LINE_AA)
+        cv2.fillPoly(frame, [pts], col, cv2.LINE_AA)
+    else:
+        cv2.polylines(frame, [shadow], True, SHADOW_COL, thickness + 1, cv2.LINE_AA)
+        cv2.polylines(frame, [pts], True, col, thickness, cv2.LINE_AA)
+
+
 def draw_rect_alpha(frame: np.ndarray, x1: int, y1: int, x2: int, y2: int,
                     color: tuple[int, int, int], alpha: float):
     """Draws a semi-transparent filled rectangle using ROI slicing to avoid full-frame hardcopies."""
@@ -539,9 +569,12 @@ def draw_done_overlay(frame: np.ndarray, score: int = 0, won: bool = False, star
         _text(frame, "LEVEL CLEARED!", (w//2 - 200, h//2 - 90),
               scale=1.8, col=(0, 255, 100), thickness=3)
         
-        # Draw Stars
-        star_str = "★" * stars + "☆" * (3 - stars)
-        _text(frame, star_str, (w//2 - 120, h//2 - 10), scale=2.5, col=(0, 215, 255), thickness=4)
+        # Draw Stars — filled for earned, outlined for not.
+        star_col = (0, 215, 255)
+        star_r, star_gap = 26, 74
+        for i in range(3):
+            _draw_star(frame, w//2 + (i - 1) * star_gap, h//2 - 18, star_r,
+                       star_col, filled=(i < max(0, min(3, stars))))
         
         if bonus > 0:
             _text(frame, f"Unused Birds Bonus: +{bonus}", (w//2 - 160, h//2 + 40), scale=0.8, col=(180, 220, 255), thickness=2)
