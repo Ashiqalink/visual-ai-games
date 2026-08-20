@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.join(BASE_DIR, '..'))
 from engine_bootstrap import ensure_engine
 ensure_engine()
 
+from gameloop import drain, draw_text, frame_pacer
 from instructions import draw_card
 from tracker import RunTracker, tracking_enabled
 from visual_ai import VisionPipeline
@@ -73,10 +74,6 @@ KEYS = (
     ("X", "turn the stabilizer off"),
     ("Q / ESC", "quit"),
 )
-
-def draw_text(img, text, x, y, size=1.0, color=(255, 255, 255), thickness=2):
-    cv2.putText(img, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, size, (0, 0, 0), thickness + 2)
-    cv2.putText(img, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, size, color, thickness)
 
 class Particle:
     def __init__(self, x, y):
@@ -204,24 +201,7 @@ def main():
     }, enabled=tracking_on)
     print(f"[tracker] run logging: {'ON (local file)' if tracking_on else 'OFF'}")
     prev_tick = time.perf_counter()
-    next_render = time.perf_counter()
-
-    def paced_key():
-        """Pump highgui, return the key, and wait out the rest of the budget.
-
-        waitKey returns as soon as a key arrives, so the long timeout paces
-        idle frames without adding input latency. Never ask for exactly the
-        remaining milliseconds: OpenCV's tick is ~15.9 ms and rounding up over
-        it costs a whole extra tick, which is what made this loop run at 32 fps
-        instead of 60.
-        """
-        nonlocal next_render
-        wait_ms = int((next_render - time.perf_counter()) * 1000.0)
-        key = cv2.waitKey(max(1, wait_ms)) & 0xFF
-        # Re-base rather than accumulate: a frame that overran its budget must
-        # not bank credit and let the next few run back-to-back.
-        next_render = max(time.perf_counter(), next_render + RENDER_DT)
-        return key
+    paced_key = frame_pacer(RENDER_DT)
 
     while True:
         now = time.perf_counter()
@@ -231,15 +211,7 @@ def main():
         # Ageing the target by the true elapsed time would expire it mid-hitch.
         dt = min(frame_ms / 1000.0, 0.10)
 
-        # Drain to the freshest payload, per the queue contract. A single
-        # get_nowait() leaves the game acting on a stale frame every time the
-        # render loop runs slower than the pipeline produces.
-        latest = None
-        while True:
-            try:
-                latest = ai_queue.get_nowait()
-            except queue.Empty:
-                break
+        latest = drain(ai_queue)
         if latest is not None:
             latest_data = latest
 

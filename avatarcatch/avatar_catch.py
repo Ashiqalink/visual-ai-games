@@ -51,6 +51,7 @@ sys.path.insert(0, os.path.join(BASE_DIR, '..'))
 from engine_bootstrap import ensure_engine
 ensure_engine()
 
+from gameloop import drain, draw_text
 from visual_ai import VisionPipeline, cut_out_person
 from visual_ai.imaging import (bgr_to_rgb, clipped_fraction, normalize_lighting,
                                pad_to, remove_background, resize as resize_rgba)
@@ -150,10 +151,6 @@ def capture_avatar(bgr_frame: np.ndarray,
     return build_sprite(rgba, matted, lighting)
 
 
-def draw_text(img, text, x, y, size=1.0, color=(255, 255, 255), thickness=2):
-    cv2.putText(img, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, size, (0, 0, 0), thickness + 2)
-    cv2.putText(img, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, size, color, thickness)
-
 
 def blit_rgba(dst_bgr, rgba, cx, cy):
     """Alpha-composite an RGBA sprite onto a BGR frame, centered at (cx, cy)."""
@@ -224,15 +221,7 @@ def main():
     canvas = np.zeros((H, W, 3), dtype=np.uint8)
 
     while True:
-        # Drain to the freshest payload, per the queue contract. A single
-        # get_nowait() leaves the game acting on a stale frame every time the
-        # render loop runs slower than the pipeline produces.
-        latest = None
-        while True:
-            try:
-                latest = ai_queue.get_nowait()
-            except queue.Empty:
-                break
+        latest = drain(ai_queue)
 
         # The queue only refills at camera rate, so most loop iterations drain
         # nothing. Everything below reads the last known frame and face rather
@@ -351,6 +340,12 @@ def main():
                       W // 2 - 220, H // 2 + 150, 0.7)
 
         cv2.imshow(TITLE, canvas)
+        # NOT frame_pacer(), unlike flappy and punchy: this loop is entirely
+        # iteration-driven -- shapes fall a fixed step per iteration and spawn
+        # on `frame_count % SPAWN_EVERY` -- so pacing it properly would take it
+        # from ~32 fps to 60 and make the game nearly twice as fast. That is the
+        # same trade punchy made deliberately; making it here means converting
+        # these counts to durations first.
         key = cv2.waitKey(16) & 0xFF
         if key in (27, ord('q')):
             break
