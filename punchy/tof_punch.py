@@ -29,6 +29,27 @@ W, H = 800, 600
 Z_HISTORY = 10
 Z_PUNCH_THRESHOLD = 0.02  # Lowered from 0.08 (simulated depth changes are smaller)
 
+# Render pacing, and the durations that used to be frame counts.
+#
+# The loop asked for cv2.waitKey(16) and got ~31 ms: OpenCV's Windows highgui
+# pumps on a ~15.9 ms tick, so a 16 ms request lands just past one tick and
+# waits out a second. Measured here, waitKey(16) is 30.89 ms/frame (32.4 fps)
+# against waitKey(1)'s 15.06 ms. flappy hit this first and carries the same
+# note; punchy never got the fix.
+#
+# Everything below that used to count loop iterations is a duration now. The
+# counts were all written against a nominal 16 ms frame -- the tracker settings
+# said so outright -- so they are converted at 16 ms, which is what the game was
+# designed for. Against the ~31 ms it actually ran at, that makes targets expire
+# about twice as fast as they have been: this is a deliberate difficulty change
+# back to the intended pace, not a side effect of the pacing fix.
+RENDER_HZ = 60.0
+RENDER_DT = 1.0 / RENDER_HZ
+
+TARGET_LIFETIME = 1.6      # s, was 100 frames
+PUNCH_COOLDOWN = 0.24      # s, was 15 frames
+FLASH_DECAY = 0.128        # s for the punch flash to fade out, was 8 frames
+
 TITLE = "ToF Punch — hit it with depth"
 GOAL = ("Punch toward the camera to smash the target before the red ring "
         "around it runs out.")
@@ -79,17 +100,21 @@ class Target:
         self.x = W // 2
         self.y = H // 2
         self.r = 80
-        self.timer = 100  # Frames to live
-        self.max_timer = 100
+        self.remaining = TARGET_LIFETIME   # seconds of life left
         self.spawn_time = time.time()
+
+    def age(self, dt: float) -> bool:
+        """Spend `dt` seconds of the target's life. True once it has expired."""
+        self.remaining -= dt
+        return self.remaining <= 0.0
 
     def draw(self, frame):
         # Pulsing effect
         pulse = math.sin((time.time() - self.spawn_time) * 10) * 8
         current_r = int(self.r + pulse)
-        
-        alpha = self.timer / self.max_timer
-        
+
+        alpha = max(0.0, self.remaining / TARGET_LIFETIME)
+
         # Draw multiple concentric circles for aesthetics
         for i in range(3, 0, -1):
             r = current_r * i // 3
@@ -140,8 +165,8 @@ def main():
     z_history = []
     lost_frames = 0
     
-    punch_cooldown = 0
-    bg_flash = 0
+    punch_cooldown = 0.0        # s of hit lockout left
+    bg_flash = 0.0              # 0..1 strength of the punch flash
     
     hand_visible = False
 
@@ -171,20 +196,40 @@ def main():
     tracker = RunTracker({
         "threshold": Z_PUNCH_THRESHOLD,
         "z_history": Z_HISTORY,
-        "cooldown_frames": 15,
-        "target_frames": target.max_timer,
-        # The target timer counts loop iterations, not seconds, so the budget is
-        # nominal at the loop's 16 ms pacing. Hit times are measured in real ms.
-        "target_budget_ms": target.max_timer * 16.0,
+        "cooldown_s": PUNCH_COOLDOWN,
+        # The target's life is wall-clock now, so the budget is the real one
+        # rather than a frame count read at a nominal frame time.
+        "target_budget_ms": TARGET_LIFETIME * 1000.0,
         "tof_simulated": bool(getattr(pipeline, "tof_simulated", False)),
     }, enabled=tracking_on)
     print(f"[tracker] run logging: {'ON (local file)' if tracking_on else 'OFF'}")
     prev_tick = time.perf_counter()
+    next_render = time.perf_counter()
+
+    def paced_key():
+        """Pump highgui, return the key, and wait out the rest of the budget.
+
+        waitKey returns as soon as a key arrives, so the long timeout paces
+        idle frames without adding input latency. Never ask for exactly the
+        remaining milliseconds: OpenCV's tick is ~15.9 ms and rounding up over
+        it costs a whole extra tick, which is what made this loop run at 32 fps
+        instead of 60.
+        """
+        nonlocal next_render
+        wait_ms = int((next_render - time.perf_counter()) * 1000.0)
+        key = cv2.waitKey(max(1, wait_ms)) & 0xFF
+        # Re-base rather than accumulate: a frame that overran its budget must
+        # not bank credit and let the next few run back-to-back.
+        next_render = max(time.perf_counter(), next_render + RENDER_DT)
+        return key
 
     while True:
         now = time.perf_counter()
         frame_ms = (now - prev_tick) * 1000.0
         prev_tick = now
+        # A frame longer than this is a stall -- a window drag, a GC pause.
+        # Ageing the target by the true elapsed time would expire it mid-hitch.
+        dt = min(frame_ms / 1000.0, 0.10)
 
         # Drain to the freshest payload, per the queue contract. A single
         # get_nowait() leaves the game acting on a stale frame every time the
@@ -222,7 +267,7 @@ def main():
         # Detect Punch
         punch_detected = False
         punch_delta = punch_baseline = 0.0
-        if len(z_history) >= 3 and punch_cooldown == 0 and not showing_help:
+        if len(z_history) >= 3 and punch_cooldown <= 0.0 and not showing_help:
             # Baseline is the furthest Z in recent history (to account for noise)
             z_baseline = max(z_history[:-1])
             current_z = z_history[-1]
@@ -232,21 +277,21 @@ def main():
                 punch_detected = True
                 punch_delta = delta_z
                 punch_baseline = z_baseline
-                punch_cooldown = 15  # prevent multi-hits
+                punch_cooldown = PUNCH_COOLDOWN   # prevent multi-hits
                 z_history.clear()
         
-        if punch_cooldown > 0:
-            punch_cooldown -= 1
+        if punch_cooldown > 0.0:
+            punch_cooldown = max(0.0, punch_cooldown - dt)
 
         frame = bg_base.copy()
         
         # Background flash on punch
-        if bg_flash > 0:
-            frame = cv2.addWeighted(frame, 1.0, flash_overlay, bg_flash/100.0, 0)
-            bg_flash = max(0, bg_flash - 10)
+        if bg_flash > 0.0:
+            frame = cv2.addWeighted(frame, 1.0, flash_overlay, bg_flash * 0.8, 0)
+            bg_flash = max(0.0, bg_flash - dt / FLASH_DECAY)
             
         if punch_detected:
-            bg_flash = 80
+            bg_flash = 1.0
             if target is not None:
                 age_ms = (time.time() - target.spawn_time) * 1000.0
                 tracker.punch(punch_delta, punch_baseline, age_ms,
@@ -262,8 +307,7 @@ def main():
             # game waiting to start, a frozen blank one reads as a hang — but it
             # does not age, so nobody is charged a miss for reading the rules.
             if not showing_help:
-                target.timer -= 1
-                if target.timer <= 0:
+                if target.age(dt):
                     tracker.target_resolved(
                         "miss", (time.time() - target.spawn_time) * 1000.0)
                     misses += 1
@@ -299,7 +343,7 @@ def main():
         draw_text(frame, f"Z: {current_z:.2f}m", W - 120, H - 20, 0.7, (200, 255, 255))
         draw_text(frame, "PUNCH FORWARD (decrease depth)!  |  H: how to play", 30, H - 30, 0.7, (200, 200, 200))
         
-        if punch_cooldown > 0:
+        if punch_cooldown > 0.0:
             draw_text(frame, "BAM!", W // 2 - 80, H // 2 - 120, 3.0, (0, 150, 255), 5)
 
         draw_tracking_status(frame, hand_visible, W)
@@ -334,7 +378,7 @@ def main():
 
         cv2.imshow("ToF Punch", frame)
 
-        key = cv2.waitKey(16) & 0xFF
+        key = paced_key()
         if key in (27, ord('q')):
             break
         elif showing_help:
