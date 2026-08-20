@@ -53,7 +53,7 @@ GAME_DIRS = [
     "cradle", "conductor", "depthpong",
 ]
 ROOT_MODULES = ["engine_bootstrap.py", "gameloop.py", "instructions.py",
-                "labkit.py", "run_lab_tests.py"]
+                "labkit.py", "runlog.py", "run_lab_tests.py"]
 
 #: Pulled in at runtime by name, so the import graph never mentions them.
 HIDDEN = [
