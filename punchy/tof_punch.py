@@ -152,6 +152,14 @@ def main():
         c = int(40 - (y / H) * 30)
         bg_base[y, :] = (c + 30, c + 10, c)  # Deep blue/purple gradient
 
+    # Full-frame effect layers. Both are constant colours, and both used to be
+    # rebuilt inside the loop — the flash allocated a fresh white frame on every
+    # frame of every punch, and the stabilizer dim copied the whole frame only
+    # to paint over every pixel of the copy.
+    flash_overlay = np.full((H, W, 3), (255, 255, 255), dtype=np.uint8)
+    stab_overlay = np.empty((H, W, 3), dtype=np.uint8)
+    stab_overlay[:] = (15, 10, 30)
+
     latest_data = None
 
     # Shown before the first target is live. The pipeline runs behind the card,
@@ -236,7 +244,6 @@ def main():
         
         # Background flash on punch
         if bg_flash > 0:
-            flash_overlay = np.full((H, W, 3), (255, 255, 255), dtype=np.uint8)
             frame = cv2.addWeighted(frame, 1.0, flash_overlay, bg_flash/100.0, 0)
             bg_flash = max(0, bg_flash - 10)
             
@@ -304,9 +311,7 @@ def main():
         
         if stab_state == "sampling":
             # Draw prominent warning in-game since camera frame is hidden
-            overlay = frame.copy()
-            cv2.rectangle(overlay, (0, 0), (W, H), (15, 10, 30), -1)
-            frame = cv2.addWeighted(frame, 0.4, overlay, 0.6, 0)
+            frame = cv2.addWeighted(frame, 0.4, stab_overlay, 0.6, 0)
             draw_text(frame, "!! LID-SHAKE STABILIZATION !!", W//2 - 250, H//2 - 50, 1.2, (0, 140, 255), 3)
             draw_text(frame, "Please do not move or change position", W//2 - 200, H//2 + 10, 0.7, (255, 255, 255), 2)
             
