@@ -354,6 +354,11 @@ def main():
     # the time the player starts.
     showing_help = True
 
+    # One canvas for the whole session, refilled each frame. Allocating a fresh
+    # (H, W, 3) buffer at 60 Hz hands the allocator ~1 MB a frame to churn for
+    # no reason — the previous frame's pixels are all overwritten anyway.
+    frame = np.zeros((H, W, 3), dtype=np.uint8)
+
     while True:
         # Drain to the freshest payload, per the queue contract. A single
         # get_nowait() leaves the game acting on a stale frame every time the
@@ -400,7 +405,6 @@ def main():
             if not game_over:
                 tracker.frame(target_y, bird_y, hand_visible, frame_ms)
 
-        frame = np.zeros((H, W, 3), dtype=np.uint8)
         frame[:] = (40, 30, 20) # Dark background
 
         if not game_over and not showing_help:

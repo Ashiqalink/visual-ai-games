@@ -218,6 +218,11 @@ def main():
     lives = 3
     frame_count = 0
 
+    # One canvas for the whole session, refilled each frame. Allocating a fresh
+    # (H, W, 3) buffer at 60 Hz hands the allocator ~1 MB a frame to churn for
+    # no reason — the previous frame's pixels are all overwritten anyway.
+    canvas = np.zeros((H, W, 3), dtype=np.uint8)
+
     while True:
         # Drain to the freshest payload, per the queue contract. A single
         # get_nowait() leaves the game acting on a stale frame every time the
@@ -242,7 +247,6 @@ def main():
                 index_x = float(latest.get("index_pos", (W // 2, 0))[0])
                 paddle_x = paddle_x * 0.7 + index_x * 0.3
 
-        canvas = np.zeros((H, W, 3), dtype=np.uint8)
         canvas[:] = (30, 25, 20)
 
         if state == STATE_CAPTURE:
