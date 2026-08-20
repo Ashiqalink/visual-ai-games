@@ -179,12 +179,17 @@ def main():
         frame_ms = (now - prev_tick) * 1000.0
         prev_tick = now
 
-        try:
-            new_data = ai_queue.get_nowait()
-            latest = new_data
-            latest_data = new_data
-        except queue.Empty:
-            latest = None
+        # Drain to the freshest payload, per the queue contract. A single
+        # get_nowait() leaves the game acting on a stale frame every time the
+        # render loop runs slower than the pipeline produces.
+        latest = None
+        while True:
+            try:
+                latest = ai_queue.get_nowait()
+            except queue.Empty:
+                break
+        if latest is not None:
+            latest_data = latest
 
         if latest is not None:
             cam_frame = latest.get("frame")

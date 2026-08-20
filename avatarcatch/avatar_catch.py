@@ -219,10 +219,15 @@ def main():
     frame_count = 0
 
     while True:
-        try:
-            latest = ai_queue.get_nowait()
-        except queue.Empty:
-            latest = None
+        # Drain to the freshest payload, per the queue contract. A single
+        # get_nowait() leaves the game acting on a stale frame every time the
+        # render loop runs slower than the pipeline produces.
+        latest = None
+        while True:
+            try:
+                latest = ai_queue.get_nowait()
+            except queue.Empty:
+                break
 
         # The queue only refills at camera rate, so most loop iterations drain
         # nothing. Everything below reads the last known frame and face rather
