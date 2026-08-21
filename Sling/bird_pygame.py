@@ -16,7 +16,7 @@ that reason.
 
 Two things differ from the OpenCV version by necessity:
 
-  * Colours. ``config.BIRD_COLOURS`` is BGR because it was authored against
+  * Colors. ``config.BIRD_COLORS`` is BGR because it was authored against
     OpenCV frames; ``rgb()`` flips it on the way in.
   * Sprites. ``render_creature`` already returns RGBA in pygame's byte order,
     so the ``rgb_to_bgr`` swap ``bird.py`` performs is simply not needed here.
@@ -48,13 +48,17 @@ from engine_bootstrap import ensure_engine  # noqa: E402
 
 ensure_engine()
 
-from config import (  # noqa: E402
-    BIRD_ORDER, BIRD_SPECS,
-    BIRD_COLOURS as COLOURS,
-    IMPACT_POP_DURATION, SPEED_LINE_THRESHOLD,
-    LIGHTING_SETTINGS,
+from config import (
+    BIRD_COLORS as COLORS,
 )
-from physics import FLOOR_Y  # noqa: E402
+from config import (  # noqa: E402
+    BIRD_ORDER,
+    BIRD_SPECS,
+    FLOOR_Y,  # noqa: E402
+    IMPACT_POP_DURATION,
+    LIGHTING_SETTINGS,
+    SPEED_LINE_THRESHOLD,
+)
 from visual_ai import render_creature  # noqa: E402
 
 #: Rasterisation size, matching ``bird.SPRITE_SIZE`` — sprites are scaled down
@@ -67,7 +71,7 @@ _sprites: dict[tuple[str, str], pygame.Surface] = {}
 
 
 def rgb(bgr: tuple[int, int, int]) -> tuple[int, int, int]:
-    """config.py stores colours BGR, for OpenCV. pygame wants them the other way."""
+    """config.py stores colors BGR, for OpenCV. pygame wants them the other way."""
     return (bgr[2], bgr[1], bgr[0])
 
 
@@ -180,24 +184,24 @@ def _draw_shadow(screen: pygame.Surface, bird, r: int) -> None:
     h = max(2, int(r * LIGHTING_SETTINGS.get("SHADOW_SCALE_Y", 0.35)
                    * (1.0 - 0.4 * fade)))
 
-    colour = rgb(LIGHTING_SETTINGS.get("SHADOW_COLOR", (10, 15, 20)))
+    color = rgb(LIGHTING_SETTINGS.get("SHADOW_COLOR", (10, 15, 20)))
     layer = pygame.Surface((w * 2, h * 2), pygame.SRCALPHA)
-    pygame.draw.ellipse(layer, (*colour, alpha), layer.get_rect())
+    pygame.draw.ellipse(layer, (*color, alpha), layer.get_rect())
     screen.blit(layer, layer.get_rect(
         center=(int(bird.x) + shift_x, int(FLOOR_Y - 4))))
 
 
 def _draw_trail(screen: pygame.Surface, bird) -> None:
-    """Fading dots along past positions. Alpha here, colour scaling there —
+    """Fading dots along past positions. Alpha here, color scaling there —
     OpenCV had no alpha channel to work with, so it dimmed towards black."""
     trail = bird.trail
     n = len(trail)
-    colour = rgb(COLOURS[bird.kind])
+    color = rgb(COLORS[bird.kind])
     for i, (tx, ty) in enumerate(trail):
         weight = (i + 1) / (n + 1)
         r = max(2, int(bird.radius * 0.25 * weight))
         dot = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
-        pygame.draw.circle(dot, (*colour, int(200 * weight)), (r, r), r)
+        pygame.draw.circle(dot, (*color, int(200 * weight)), (r, r), r)
         screen.blit(dot, (int(tx) - r, int(ty) - r))
 
 
@@ -224,10 +228,10 @@ def _draw_impact_pop(screen: pygame.Surface, bird, cx: int, cy: int,
     progress = 1.0 - bird.impact_timer / IMPACT_POP_DURATION
     pop_r = int(r + progress * 20)
     remaining = max(0.0, 1.0 - progress)
-    base = rgb(COLOURS[bird.kind])
-    colour = tuple(min(255, int(c * remaining) + 50) for c in base)
+    base = rgb(COLORS[bird.kind])
+    color = tuple(min(255, int(c * remaining) + 50) for c in base)
     thickness = max(1, 3 - int(progress * 3))
-    pygame.draw.circle(screen, colour, (cx, cy), pop_r, thickness)
+    pygame.draw.circle(screen, color, (cx, cy), pop_r, thickness)
 
 
 # ── Demo ──────────────────────────────────────────────────────────────────────
@@ -238,9 +242,10 @@ def _draw_impact_pop(screen: pygame.Surface, bird, cx: int, cy: int,
 def main() -> int:
     # Imported here, not at module scope: bird.py pulls in cv2 and rasterises
     # every sprite at import time. The renderer above needs neither.
-    from bird import Bird
-    from config import FRAME_W, FRAME_H, BG_COLOR
     import random
+
+    from bird import Bird
+    from config import BG_COLOR, FRAME_H, FRAME_W
 
     pygame.init()
     pygame.display.set_caption("Birds — pygame renderer")

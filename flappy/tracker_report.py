@@ -30,15 +30,14 @@ The numbers worth reading first:
                   player running out of reach.
 """
 
-import os
-import sys
 import math
+import os
 import statistics
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from tracker import (DATA_DIR, OPT_IN_MARKER, disable_here, enable_here,
-                     load_runs, tracking_enabled)
+from tracker import DATA_DIR, disable_here, enable_here, load_runs, tracking_enabled
 
 MAX_LAG_FRAMES = 30   # logged frames, i.e. 30 * stride real frames
 

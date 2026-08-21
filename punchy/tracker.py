@@ -32,10 +32,18 @@ Frames are kept in memory and written once, at the end of a run, so nothing
 does file IO inside the game loop.
 """
 
-import io
 import os
-import json
+import sys
 import time
+
+# runlog.py lives at the repo root. tracker.py is imported both by the
+# game (which has already put the root on sys.path) and by
+# tracker_report.py / test_tracker.py, which have not, so it puts the
+# root there itself rather than depending on who imported it.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import runlog
+from runlog import RunStore
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
@@ -51,45 +59,42 @@ MAX_FRAMES = 20000
 # Opt-in marker. Tracking runs only on a machine that has this file, or that
 # sets PUNCHY_TRACKING=1. The file lives inside the gitignored data directory,
 # so it cannot be committed and cannot travel with a copy of the game.
-OPT_IN_MARKER = os.path.join(DATA_DIR, "tracking-enabled")
+OPT_IN_MARKER = runlog.marker_path(DATA_DIR)
+
+_ENV_VAR = "PUNCHY_TRACKING"
 
 # Stabilizer state as one small integer per frame rather than a repeated string.
 STAB_CODES = {"inactive": 0, "sampling": 1, "active": 2}
 STAB_NAMES = {v: k for k, v in STAB_CODES.items()}
 
 
-def tracking_enabled():
-    """True only where run tracking has been deliberately switched on.
+# The store is built per call rather than once at import, so that patching
+# DATA_DIR or OPT_IN_MARKER at runtime redirects the files too - which is how
+# test_tracker.py keeps its synthetic runs out of the player's real log.
+def _store():
+    return RunStore(DATA_DIR, _ENV_VAR, marker=OPT_IN_MARKER)
 
-    Off by default, everywhere. `PUNCHY_TRACKING=1` turns it on for one run;
-    creating the marker file turns it on for this machine (see enable_here()).
-    An explicit PUNCHY_TRACKING=0 wins over the marker, so a single run can
-    always be kept out of the log.
-    """
-    env = os.environ.get("PUNCHY_TRACKING", "").strip().lower()
-    if env in ("0", "false", "no", "off"):
-        return False
-    if env in ("1", "true", "yes", "on"):
-        return True
-    return os.path.exists(OPT_IN_MARKER)
+
+# Thin wrappers, kept as module-level names because the game, the report tool
+# and the tests all import them from here.
+def tracking_enabled():
+    """True only where run tracking has been deliberately switched on."""
+    return _store().enabled()
 
 
 def enable_here(note=""):
     """Switch tracking on for this machine by writing the marker."""
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with io.open(OPT_IN_MARKER, "w", encoding="utf-8") as fh:
-        fh.write("Run tracking is on for this machine.\n"
-                 "Delete this file to turn it off. It is gitignored and never "
-                 "travels with the game.\n" + (note and note + "\n"))
-    return OPT_IN_MARKER
+    return _store().enable_here(note)
 
 
 def disable_here():
     """Switch tracking off for this machine. Existing logs are left alone."""
-    if os.path.exists(OPT_IN_MARKER):
-        os.remove(OPT_IN_MARKER)
-        return True
-    return False
+    return _store().disable_here()
+
+
+def load_runs(paths=None):
+    """Read run records back. Used by tracker_report.py."""
+    return _store().load(paths)
 
 
 class RunTracker:
@@ -191,41 +196,8 @@ class RunTracker:
         if len(self.frames) < 10:
             return None
         try:
-            return _append(record)
+            return _store().append(record)
         except OSError as exc:
             # Diagnostics must never take the game down with them.
             print(f"[tracker] could not write run log: {exc}")
             return None
-
-
-def _append(record):
-    os.makedirs(DATA_DIR, exist_ok=True)
-    path = os.path.join(
-        DATA_DIR,
-        "runs-%s.jsonl" % time.strftime("%Y-%m-%d", time.localtime()))
-    with io.open(path, "a", encoding="utf-8") as fh:
-        fh.write(json.dumps(record) + "\n")
-    return path
-
-
-def load_runs(paths=None):
-    """Read run records back. Used by tracker_report.py."""
-    if paths is None:
-        if not os.path.isdir(DATA_DIR):
-            return []
-        paths = [os.path.join(DATA_DIR, n) for n in sorted(os.listdir(DATA_DIR))
-                 if n.startswith("runs-") and n.endswith(".jsonl")]
-    runs = []
-    for path in paths:
-        with io.open(path, encoding="utf-8") as fh:
-            for line_no, line in enumerate(fh, 1):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    runs.append(json.loads(line))
-                except ValueError:
-                    # A run interrupted mid-write leaves a partial last line.
-                    print(f"[tracker] skipping unreadable line "
-                          f"{os.path.basename(path)}:{line_no}")
-    return runs

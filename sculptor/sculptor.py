@@ -36,13 +36,11 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-import cv2
 import numpy as np
+from visual_ai import Camera3D, Material, Mesh3D, Renderer3D, Transform3D
 
 import labkit
 from labkit import LabGame, draw_bar, draw_panel, draw_text
-
-from visual_ai import Camera3D, Material, Mesh3D, Renderer3D, Transform3D
 
 MESHES = ("cube", "pyramid", "sphere", "cylinder", "capsule", "torus",
           "prism", "icosahedron")
@@ -228,7 +226,8 @@ class Sculptor(LabGame):
             if len(samples) >= 40:
                 q = len(samples) // 4
                 entry["drift_pct"] = round(
-                    100.0 * (statistics.fmean(samples[-q:]) / statistics.fmean(samples[:q]) - 1.0), 1)
+                    100.0 * (statistics.fmean(samples[-q:])
+                             / statistics.fmean(samples[:q]) - 1.0), 1)
             out["per_mesh"][name] = entry
         return out
 

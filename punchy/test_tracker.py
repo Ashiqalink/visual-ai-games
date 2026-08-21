@@ -10,10 +10,15 @@ that were thrown. A run with punches far above the noise must report headroom
 well over 1; a run where they overlap must report it under 1, because that is
 the case the report is there to catch.
 """
-import sys, os, math, random, tempfile, shutil
+import os
+import random
+import shutil
+import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import tracker, tracker_report
+import tracker
+import tracker_report
 
 # Never touch the real punchy/data: the point of that directory is that it
 # holds the user's own play history.

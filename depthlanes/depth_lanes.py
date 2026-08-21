@@ -43,7 +43,7 @@ from labkit import LabGame, draw_panel, draw_text
 #: the bands are placed either side of that rather than at pretty round numbers.
 BAND_EDGES = (0.38, 0.52)
 LANE_NAMES = ("NEAR", "MID", "FAR")
-LANE_COLOURS = ((110, 120, 255), (120, 240, 200), (255, 190, 110))
+LANE_COLORS = ((110, 120, 255), (120, 240, 200), (255, 190, 110))
 
 BPM = 100.0
 BEAT = 60.0 / BPM
@@ -205,14 +205,14 @@ class DepthLanes(LabGame):
             active = (lane == self.band and self.hand_visible)
             shade = 42 if active else 22
             cv2.rectangle(canvas, (0, y0), (self.width, y0 + lane_h - 4),
-                          tuple(int(c * shade / 255) for c in LANE_COLOURS[lane]), -1)
+                          tuple(int(c * shade / 255) for c in LANE_COLORS[lane]), -1)
             draw_text(canvas, LANE_NAMES[lane], 20, y0 + 34, 0.7,
-                      LANE_COLOURS[lane] if active else (110, 110, 120), 2)
+                      LANE_COLORS[lane] if active else (110, 110, 120), 2)
             cv2.line(canvas, (judge_x, y0), (judge_x, y0 + lane_h - 4),
                      (200, 200, 210), 2)
             if active:
                 cv2.circle(canvas, (judge_x, y0 + lane_h // 2), 26,
-                           LANE_COLOURS[lane], 3)
+                           LANE_COLORS[lane], 3)
 
         px_per_s = (self.width - judge_x) / APPROACH
         for note in self.notes[self.next_note:self.next_note + 40]:
@@ -221,7 +221,7 @@ class DepthLanes(LabGame):
                 continue
             x = judge_x + dt_to_beat * px_per_s
             y = note.lane * lane_h + lane_h // 2
-            cv2.circle(canvas, (int(x), int(y)), 20, LANE_COLOURS[note.lane], -1)
+            cv2.circle(canvas, (int(x), int(y)), 20, LANE_COLORS[note.lane], -1)
             cv2.circle(canvas, (int(x), int(y)), 20, (250, 250, 250), 2)
 
         draw_panel(canvas, self.width - 300, 12, 288, 148)

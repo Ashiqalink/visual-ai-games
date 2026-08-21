@@ -1,0 +1,12 @@
+# The rule set this repo already mostly follows, written down so drift gets
+# caught at edit time. Fix violations rather than widening the ignores.
+line-length = 100
+extend-exclude = ["*/.venv", "releases"]
+
+[lint]
+select = ["E", "F", "I", "UP"]
+# E402 is the repo's structural pattern, not an accident: every game must call
+# engine_bootstrap.ensure_engine() (and often sys.path.insert) BEFORE importing
+# visual_ai, so module-level imports after code is how these files have to
+# read. Suppressing it per-file would mean a noqa on half the repo.
+ignore = ["E402"]

@@ -1,9 +1,23 @@
-import os
-import sys
+"""
+flappy - flap by raising your index finger. Pure RGB tracking, no depth.
+
+The fingertip's screen-space Y is the whole control: the bird eases toward it
+with a difficulty-dependent time constant, so the game doubles as a test bed
+for how much smoothing lag a player can feel. Difficulty, pacing and the run
+tracker are all wall-clock; the render loop is paced by gameloop.frame_pacer,
+and the RENDER_HZ comment below records why a naive cv2.waitKey(16) ran this
+game at half speed for weeks.
+
+(The docs' name for this entry, tof_flappy.py, is stale - this file has never
+read depth.)
+"""
 import math
-import time
+import os
 import queue
 import random
+import sys
+import time
+
 import cv2
 import numpy as np
 
@@ -14,14 +28,18 @@ if BASE_DIR not in sys.path:
 sys.path.insert(0, os.path.join(BASE_DIR, '..'))
 
 from engine_bootstrap import ensure_engine
+
 ensure_engine()
 
-from instructions import draw_card
 from tracker import RunTracker, tracking_enabled
 from visual_ai import VisionPipeline
 
+from gameloop import drain, draw_text, frame_pacer
+from instructions import draw_card
+
 W, H = 800, 600
 
+WINDOW = "Flappy"      # the OpenCV window name; TITLE below is the help card
 TITLE = "Flappy — fly with your fingertip"
 GOAL = ("Fly the bird through the gaps in the pipes. Hitting a pipe, the "
         "ceiling or the floor ends the run. The gaps start near the middle "
@@ -126,10 +144,6 @@ DIFFICULTIES = (
      "follow_tau": 0.039, "ramp_pipes": 14},
 )
 DEFAULT_DIFFICULTY = 0
-
-def draw_text(img, text, x, y, size=1.0, color=(255, 255, 255), thickness=2):
-    cv2.putText(img, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, size, (0, 0, 0), thickness + 2)
-    cv2.putText(img, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, size, color, thickness)
 
 class Pipe:
     def __init__(self, x, gap, gap_centre):
@@ -284,7 +298,8 @@ def draw_tracking_status(canvas, hand_visible, w=800):
     status_col = (0, 255, 0) if hand_visible else (0, 0, 255)
     status_text = "TRACKING" if hand_visible else "NO HAND"
     cv2.circle(canvas, (x0, y0), 8, status_col, -1)
-    cv2.putText(canvas, status_text, (x0 + 15, y0 + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_col, 2)
+    cv2.putText(canvas, status_text, (x0 + 15, y0 + 5),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_col, 2)
 
 def main():
     print("Starting Flappy...")
@@ -306,8 +321,8 @@ def main():
     pipeline.disable_camera = False
     pipeline.start()
 
-    cv2.namedWindow("Flappy", cv2.WINDOW_NORMAL)
-    cv2.resizeWindow("Flappy", W, H)
+    cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(WINDOW, W, H)
 
     bird_y = H // 2
 
@@ -324,28 +339,10 @@ def main():
     tracking_on = tracking_enabled()
     tracker = RunTracker(diff, enabled=tracking_on)
     last_frame_t = time.perf_counter()
-    next_render = time.perf_counter()
-
-    def paced_key():
-        """Pump highgui, return the key, and wait out the rest of the budget.
-
-        waitKey returns as soon as a key arrives, so the long timeout paces
-        idle frames without adding input latency. Never ask for exactly the
-        remaining milliseconds: OpenCV's tick is ~15.9 ms and rounding up over
-        it costs a whole extra tick, which is what made this loop run at 32 fps
-        instead of 60.
-        """
-        nonlocal next_render
-        wait_ms = int((next_render - time.perf_counter()) * 1000.0)
-        key = cv2.waitKey(max(1, wait_ms)) & 0xFF
-        # Re-base rather than accumulate: a frame that overran its budget must
-        # not bank credit and let the next few run back-to-back.
-        next_render = max(time.perf_counter(), next_render + RENDER_DT)
-        return key
+    paced_key = frame_pacer(RENDER_DT)
     game_over = False
 
     target_y = float(H // 2)
-    cam_frame = None
     hand_visible = False
     smoothing_on = True
 
@@ -354,14 +351,15 @@ def main():
     # the time the player starts.
     showing_help = True
 
+    # One canvas for the whole session, refilled each frame. Allocating a fresh
+    # (H, W, 3) buffer at 60 Hz hands the allocator ~1 MB a frame to churn for
+    # no reason — the previous frame's pixels are all overwritten anyway.
+    frame = np.zeros((H, W, 3), dtype=np.uint8)
+
     while True:
-        try:
-            latest = ai_queue.get_nowait()
-        except queue.Empty:
-            latest = None
+        latest = drain(ai_queue)
 
         if latest is not None:
-            cam_frame = latest.get("frame")
             hand_visible = latest.get("hand_visible", False)
             if hand_visible:
                 # Height follows the index fingertip directly.
@@ -395,7 +393,6 @@ def main():
             if not game_over:
                 tracker.frame(target_y, bird_y, hand_visible, frame_ms)
 
-        frame = np.zeros((H, W, 3), dtype=np.uint8)
         frame[:] = (40, 30, 20) # Dark background
 
         if not game_over and not showing_help:
@@ -436,7 +433,9 @@ def main():
             smoothing_on = latest.get("smoothing_enabled", True)
         draw_text(frame, f"Smoothing: {'ON' if smoothing_on else 'OFF'}", 20, 80, 0.7,
                   (0, 255, 0) if smoothing_on else (0, 180, 255))
-        draw_text(frame, "Raise/lower your index finger to fly  |  1/2/3: difficulty  |  T: tracking  |  H: how to play  |  K: smoothing",
+        draw_text(frame,
+                  "Raise/lower your index finger to fly  |  1/2/3: difficulty  |  "
+                  "T: tracking  |  H: how to play  |  K: smoothing",
                   20, H - 20, 0.5, (150, 150, 150))
 
         if game_over:
@@ -448,7 +447,7 @@ def main():
         if showing_help:
             draw_card(frame, TITLE, GOAL, CONTROLS, KEYS)
 
-        cv2.imshow("Flappy", frame)
+        cv2.imshow(WINDOW, frame)
 
         key = paced_key()
         if key in (27, ord('q')):

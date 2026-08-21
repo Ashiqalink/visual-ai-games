@@ -8,30 +8,34 @@ Visual improvements over the plain line-based version:
   - Criss-cross leather / twine cord lashings at the Y-junction
   - Brass ferrule collar bands with rivet dots at the fork tips
   - 3-pass catenary elastic bands: dark shadow edge → vivid tension core →
-    glossy specular sheen line; colour and thickness scale with pull distance
+    glossy specular sheen line; color and thickness scale with pull distance
   - Leather bird-pouch cup drawn behind the bird when armed or on the sling
   - Organic dirt-mound base pedestal with a soft ground shadow
   - Snap-back vibration animation on release (unchanged API)
 """
 
+import math
+
 import cv2
 import numpy as np
-import math
-from visual_ai import lerp, Vector2
 from config import (
-    SLING_X, SLING_Y,
-    FORK_SPREAD_X, FORK_RISE_Y, HANDLE_DROP_Y,
-    SLING_WOOD_COLOR, SLING_WOOD_DARK,
-    SLING_ELASTIC_NEAR, SLING_ELASTIC_FAR,
+    FORK_RISE_Y,
+    FORK_SPREAD_X,
+    HANDLE_DROP_Y,
+    SLING_ELASTIC_FAR,
+    SLING_ELASTIC_NEAR,
     SLING_SNAP_DURATION,
+    SLING_X,
+    SLING_Y,
 )
+from visual_ai import Vector2, lerp
 
 # ── Geometry ───────────────────────────────────────────────────────────────────
 FORK_LEFT  = (SLING_X - FORK_SPREAD_X, SLING_Y - FORK_RISE_Y)
 FORK_RIGHT = (SLING_X + FORK_SPREAD_X, SLING_Y - FORK_RISE_Y)
 HANDLE_BOT = (SLING_X, SLING_Y + HANDLE_DROP_Y)
 
-# ── Colours (all BGR) ─────────────────────────────────────────────────────────
+# ── Colors (all BGR) ─────────────────────────────────────────────────────────
 # Wood tones
 _W_BARK     = (28,  72, 130)   # darkest — bark edges
 _W_BASE     = (42, 108, 175)   # mid warm brown
@@ -46,9 +50,9 @@ _M_DARK     = (45,  55,  65)
 _M_BASE     = (80,  90, 100)
 _M_SHINE    = (170, 185, 195)
 # Ground / shadow
-_SHADOW_COL = (10,  15,  22)
-_DIRT_COL   = (38,  68,  88)
-_GRASS_COL  = (52, 118,  60)
+_SHADOW_COLOR = (10,  15,  22)
+_DIRT_COLOR   = (38,  68,  88)
+_GRASS_COLOR  = (52, 118,  60)
 # Elastic
 ELASTIC_COL_NEAR = SLING_ELASTIC_NEAR
 ELASTIC_COL_FAR  = SLING_ELASTIC_FAR
@@ -85,7 +89,7 @@ def _snap_pos():
     return (int(x), int(y))
 
 
-# ── Internal colour helpers ────────────────────────────────────────────────────
+# ── Internal color helpers ────────────────────────────────────────────────────
 
 def _elastic_color(pull_dist: float) -> tuple:
     t = min(1.0, pull_dist / 150.0)
@@ -158,14 +162,14 @@ def _draw_pedestal(frame: np.ndarray):
     bx, by = SLING_X, HANDLE_BOT[1]
 
     # Ground shadow ellipse (blended overlay)
-    cv2.ellipse(frame, (bx, by + 8), (34, 8), 0, 0, 360, _SHADOW_COL, -1, cv2.LINE_AA)
+    cv2.ellipse(frame, (bx, by + 8), (34, 8), 0, 0, 360, _SHADOW_COLOR, -1, cv2.LINE_AA)
 
     # Dirt mound (stacked ellipses for organic look)
-    cv2.ellipse(frame, (bx, by + 2), (22, 10), 0, 0, 360, _DIRT_COL, -1, cv2.LINE_AA)
-    cv2.ellipse(frame, (bx, by + 4), (28, 7),  0, 0, 360, _DIRT_COL, -1, cv2.LINE_AA)
+    cv2.ellipse(frame, (bx, by + 2), (22, 10), 0, 0, 360, _DIRT_COLOR, -1, cv2.LINE_AA)
+    cv2.ellipse(frame, (bx, by + 4), (28, 7),  0, 0, 360, _DIRT_COLOR, -1, cv2.LINE_AA)
 
     # Grass lip
-    cv2.ellipse(frame, (bx, by + 1), (26, 6),  0, 180, 360, _GRASS_COL, -1, cv2.LINE_AA)
+    cv2.ellipse(frame, (bx, by + 1), (26, 6),  0, 180, 360, _GRASS_COLOR, -1, cv2.LINE_AA)
     cv2.ellipse(frame, (bx, by + 1), (26, 6),  0, 180, 360, (40, 90, 48), 1, cv2.LINE_AA)
 
 

@@ -13,50 +13,36 @@ See the sprite section at the bottom of this file.
   - Air drag during flight
 """
 
-import cv2
-import numpy as np
+import collections
 import hashlib
 import math
-import collections
 import os
-from physics import GRAVITY, FLOOR_Y, AIR_DRAG, BIRD_BOUNCE, BIRD_LINGER, magnitude, bird_hits_ground
+
+import cv2
+import numpy as np
 from config import (
-    TRAIL_LEN, SPEED_LINE_THRESHOLD, IMPACT_POP_DURATION, BIRD_IDLE_SPEED,
-    BIRD_ORDER, BIRD_SPECS, BIRD_MESH_SHAPES,
-    BIRD_RADII as RADII, BIRD_MASSES as MASSES, BIRD_COLOURS as COLOURS,
-    CHARACTER_3D_MATERIALS, LIGHTING_SETTINGS
+    AIR_DRAG,
+    BIRD_BOUNCE,
+    BIRD_IDLE_SPEED,
+    BIRD_LINGER,
+    BIRD_ORDER,
+    BIRD_SPECS,
+    FLOOR_Y,
+    GRAVITY,
+    IMPACT_POP_DURATION,
+    LIGHTING_SETTINGS,
+    SPEED_LINE_THRESHOLD,
+    TRAIL_LEN,
 )
-from visual_ai import (
-    Renderer3D, Mesh3D, Transform3D, Camera3D, Vector2,
-    render_creature, rgb_to_bgr, load_image,
-)
-from visual_ai.imaging import blit_sprite, blit_ellipse_alpha
+from config import BIRD_COLORS as COLORS
+from config import BIRD_MASSES as MASSES
+from config import BIRD_RADII as RADII
+from physics import bird_hits_ground, magnitude
+from visual_ai import Vector2, load_image, render_creature, rgb_to_bgr
+from visual_ai.imaging import blit_sprite
 
 # Trail length (number of past positions stored)
 _TRAIL_LEN = TRAIL_LEN
-
-# Shared 3D Camera & Renderer for Bird 3D Mesh rendering
-_bird_cam3d = Camera3D(fov=60.0, position=(0.0, 0.0, 500.0))
-_bird_renderer3d = Renderer3D(
-    camera=_bird_cam3d,
-    light_angle_deg=LIGHTING_SETTINGS.get("LIGHT_ANGLE", 45.0),
-    ambient_intensity=LIGHTING_SETTINGS.get("AMBIENT_INTENSITY", 0.45),
-    light_intensity=LIGHTING_SETTINGS.get("LIGHT_INTENSITY", 0.85),
-)
-
-# Cache 3D mesh geometries per bird kind. The shape each kind uses is declared
-# in config.py alongside its spec, so a new creature does not need an edit here.
-def _build_mesh(kind: str) -> Mesh3D:
-    radius = RADII[kind]
-    shape = BIRD_MESH_SHAPES.get(kind, "sphere")
-    if shape == "pyramid":
-        return Mesh3D.create_pyramid(width=radius * 1.8, height=radius * 2.2)
-    if shape == "capsule":
-        return Mesh3D.create_capsule(radius=radius * 0.85, height=radius * 0.7)
-    return Mesh3D.create_sphere(radius=radius)
-
-
-_bird_3d_meshes = {kind: _build_mesh(kind) for kind in BIRD_ORDER}
 
 _bird_images_2d = {}
 _bird_images_side_2d = {}
@@ -131,14 +117,16 @@ class Bird:
     def draw(self, frame: np.ndarray, scale: float = 1.0):
         cx, cy = int(self.x), int(self.y)
         r = int(self.radius * scale)
-        col = COLOURS[self.kind]
+        col = COLORS[self.kind]
 
         # 0. Ground Drop Shadow under bird
         from ui import draw_ground_shadow  # local: ui imports bird, avoid circular import
         shadow_scale_x = LIGHTING_SETTINGS.get("SHADOW_SCALE_X", 1.25)
         shadow_scale_y = LIGHTING_SETTINGS.get("SHADOW_SCALE_Y", 0.35)
-        shadow_w = int(r * shadow_scale_x * (1.2 - 0.3 * max(0, min(1, (FLOOR_Y - self.y) / 160.0))))
-        shadow_h = int(r * shadow_scale_y * (1.0 - 0.4 * max(0, min(1, (FLOOR_Y - self.y) / 160.0))))
+        shadow_w = int(r * shadow_scale_x
+                       * (1.2 - 0.3 * max(0, min(1, (FLOOR_Y - self.y) / 160.0))))
+        shadow_h = int(r * shadow_scale_y
+                       * (1.0 - 0.4 * max(0, min(1, (FLOOR_Y - self.y) / 160.0))))
         draw_ground_shadow(frame, cx, int(self.y), shadow_w, shadow_h)
 
         # 1. Trail (behind bird)
@@ -146,7 +134,8 @@ class Bird:
             self._draw_trail(frame)
 
         # 3. Bird Base Body (2D Image or Fallback Silhouette)
-        img = _bird_images_side_2d.get(self.kind) if self.on_slingshot else _bird_images_2d.get(self.kind)
+        img = (_bird_images_side_2d.get(self.kind) if self.on_slingshot
+               else _bird_images_2d.get(self.kind))
         if img is None:
             img = _bird_images_2d.get(self.kind)
         if img is not None and img.shape[2] == 4:
@@ -170,35 +159,6 @@ class Bird:
         if self.impact_timer > 0 and scale >= 1.0:
             self._draw_impact_pop(frame, cx, cy, r)
 
-    def _draw_3d_body(self, frame: np.ndarray, cx: int, cy: int, scale: float):
-        """Render subtle 3D character volume tilt using visual_ai camera/renderer."""
-        h, w = frame.shape[:2]
-        _bird_cam3d.screen_width = float(w)
-        _bird_cam3d.screen_height = float(h)
-        _bird_cam3d.focal_length = (float(w) / 2.0) / math.tan(math.radians(_bird_cam3d.fov / 2.0))
-        _bird_cam3d.position[2] = _bird_cam3d.focal_length
-
-        # Screen to camera translation
-        rel_x = float(cx) - (w / 2.0)
-        rel_y = (h / 2.0) - float(cy)
-
-        # Determine dynamic 3D tilt based on flight angle
-        rx = 0.0
-        ry = 0.0
-        rz = self.rot_z
-        if self.launched and (abs(self.vx) > 0.1 or abs(self.vy) > 0.1):
-            flight_angle = math.degrees(math.atan2(-self.vy, self.vx))
-            ry = flight_angle * 0.4
-            rx = 10.0
-
-        fallback_kind = BIRD_ORDER[0]
-        mesh = _bird_3d_meshes.get(self.kind, _bird_3d_meshes[fallback_kind])
-        mat = CHARACTER_3D_MATERIALS.get(
-            self.kind, CHARACTER_3D_MATERIALS[fallback_kind])
-
-        transform = Transform3D(x=rel_x, y=rel_y, z=0.0, rx=rx, ry=ry, rz=rz, sx=scale*0.95, sy=scale*0.95, sz=scale*0.95)
-        _bird_renderer3d.render_mesh(frame, mesh, transform, material=mat)
-
     @staticmethod
     def _draw_finish(frame: np.ndarray, cx: int, cy: int, r: int, col):
         """Small illustration passes shared by all birds: wing, rim and shine."""
@@ -207,8 +167,10 @@ class Bird:
         # A tucked wing adds depth without covering the face.
         wing_col = tuple(max(0, int(c * 0.68)) for c in col)
         wing = (cx - int(r * .47), cy + int(r * .18))
-        cv2.ellipse(frame, wing, (max(3, int(r*.35)), max(3, int(r*.22))), 28, 10, 190, wing_col, -1, cv2.LINE_AA)
-        cv2.ellipse(frame, wing, (max(3, int(r*.35)), max(3, int(r*.22))), 28, 10, 190, (20, 20, 20), 1, cv2.LINE_AA)
+        cv2.ellipse(frame, wing, (max(3, int(r*.35)), max(3, int(r*.22))),
+                    28, 10, 190, wing_col, -1, cv2.LINE_AA)
+        cv2.ellipse(frame, wing, (max(3, int(r*.35)), max(3, int(r*.22))),
+                    28, 10, 190, (20, 20, 20), 1, cv2.LINE_AA)
         # A restrained upper-left sheen makes the simple OpenCV artwork feel
         # round while preserving the crisp, game-like style.
         shine = tuple(min(255, int(c + (255-c)*.35)) for c in col)
@@ -221,7 +183,7 @@ class Bird:
     def _draw_trail(self, frame: np.ndarray):
         """Fading circles along past positions."""
         n = len(self.trail)
-        col = COLOURS[self.kind]
+        col = COLORS[self.kind]
         for i, (tx, ty) in enumerate(self.trail):
             alpha = (i + 1) / (n + 1)
             r = max(2, int(self.radius * 0.25 * alpha))
@@ -254,7 +216,7 @@ class Bird:
         progress = 1.0 - self.impact_timer / IMPACT_POP_DURATION
         pop_r = int(r + progress * 20)
         alpha_val = max(0, 1.0 - progress)
-        col_base = COLOURS[self.kind]
+        col_base = COLORS[self.kind]
         col = (
             min(255, int(col_base[0] * alpha_val) + 50),
             min(255, int(col_base[1] * alpha_val) + 50),
@@ -299,7 +261,7 @@ def _sprite_cache_key(kind: str, view: str) -> str:
     creature in config.py — or bumping SPRITE_SIZE — lands on a different file
     and the stale sprite is simply never read again. No manual cache-busting.
     """
-    payload = f"{kind}|{view}|{SPRITE_SIZE}|{BIRD_SPECS[kind]!r}".encode("utf-8")
+    payload = f"{kind}|{view}|{SPRITE_SIZE}|{BIRD_SPECS[kind]!r}".encode()
     return f"{kind}_{view}_{hashlib.sha1(payload).hexdigest()[:12]}.png"
 
 

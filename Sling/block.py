@@ -3,31 +3,42 @@ block.py — Block with material system (wood/stone/ice), health, gravity,
            floor bounce, angular rotation, and progressive fracture rendering.
 """
 
-import sys
+import math
 import os
+
 import cv2
 import numpy as np
-import math
-import random
-
-# Ensure visual ai game engine imports are accessible
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine', 'src'))
-from visual_ai import (
-    Renderer3D, Mesh3D, Transform3D, Camera3D, Material,
-    render_creature, rgb_to_bgr, load_image,
-)
-from visual_ai.imaging import blit_sprite, blit_ellipse_alpha
-
-from physics import GRAVITY, FLOOR_Y, RESTITUTION, DAMAGE_FACTOR, BLOCK_HEALTH
-from ui import draw_ground_shadow
 from config import (
-    BLOCK_VX_TRANSFER, BLOCK_VY_TRANSFER, DEBRIS_FADE_FRAMES,
-    BLOCK_MATERIALS as MATERIALS, LIGHTING_SETTINGS,
-    TARGET, TARGET_SPEC,
+    BLOCK_MATERIALS as MATERIALS,
 )
+from config import (
+    BLOCK_VX_TRANSFER,
+    BLOCK_VY_TRANSFER,
+    DAMAGE_FACTOR,
+    DEBRIS_FADE_FRAMES,
+    FLOOR_Y,
+    GRAVITY,
+    LIGHTING_SETTINGS,
+    RESTITUTION,
+    TARGET,
+    TARGET_SPEC,
+)
+from ui import draw_ground_shadow
+from visual_ai import (
+    Camera3D,
+    Material,
+    Mesh3D,
+    Renderer3D,
+    Transform3D,
+    load_image,
+    render_creature,
+    rgb_to_bgr,
+)
+from visual_ai.imaging import blit_sprite
 
 # Global 3D Renderer instance for Block 3D depth rendering
-_block_cam3d = Camera3D(fov=60.0, position=(0.0, 0.0, 500.0), screen_width=1280.0, screen_height=720.0)
+_block_cam3d = Camera3D(fov=60.0, position=(0.0, 0.0, 500.0),
+                        screen_width=1280.0, screen_height=720.0)
 _block_renderer3d = Renderer3D(
     camera=_block_cam3d,
     light_angle_deg=LIGHTING_SETTINGS.get("LIGHT_ANGLE", 45.0),
@@ -65,7 +76,7 @@ class Block:
         self.active: bool = True
         self.on_ground: bool = False
         self.is_static: bool = False
-        
+
         # Debris lifespan (ported from visual_ai)
         self.is_debris: bool = False
         self.lifespan: int = -1
@@ -146,12 +157,15 @@ class Block:
             self.on_ground = False
         return self.health <= 0 and not self.is_static
 
-    def _get_damaged_polygon(self, cx: float, cy: float, w: float, h: float, cos_a: float, sin_a: float) -> tuple[np.ndarray, list[tuple[tuple[int, int], tuple[int, int]]]]:
+    def _get_damaged_polygon(
+        self, cx: float, cy: float, w: float, h: float, cos_a: float, sin_a: float,
+    ) -> tuple[np.ndarray, list[tuple[tuple[int, int], tuple[int, int]]]]:
         """
         Compute polygonal contour with missing bite chunks/corner cutouts when block is hit.
         Returns:
             corners: Nx2 numpy array of integer pixel coordinates for fillPoly/polylines.
-            inner_cut_edges: list of (p1, p2) segment tuples representing exposed inner core borders.
+            inner_cut_edges: list of (p1, p2) segment tuples representing
+            exposed inner core borders.
         """
         hp_ratio = max(0.0, self.health / self.max_health)
         half_w, half_h = w / 2.0, h / 2.0
@@ -168,7 +182,6 @@ class Block:
         seed = int(self.rect[0] * 13 + self.rect[1] * 37) % 4
 
         tl = np.array([-half_w, -half_h])
-        tr = np.array([half_w, -half_h])
         br = np.array([half_w, half_h])
         bl = np.array([-half_w, half_h])
 
@@ -246,13 +259,14 @@ class Block:
         if render_3d and not self.is_debris:
             _block_cam3d.screen_width = float(frame_w)
             _block_cam3d.screen_height = float(frame_h)
-            _block_cam3d.focal_length = (float(frame_w) / 2.0) / math.tan(math.radians(_block_cam3d.fov / 2.0))
+            _block_cam3d.focal_length = ((float(frame_w) / 2.0)
+                                         / math.tan(math.radians(_block_cam3d.fov / 2.0)))
             _block_cam3d.position[2] = _block_cam3d.focal_length
 
             mat_info = MATERIALS.get(self.material, MATERIALS["wood"])
             bgr_col = mat_info["color"]
             rgb_float = (bgr_col[2] / 255.0, bgr_col[1] / 255.0, bgr_col[0] / 255.0, 1.0)
-            
+
             vmat = mat_info.get("material")
             opacity = vmat.opacity if vmat else 1.0
             block_mat_3d = Material(base_color=rgb_float, opacity=opacity)
@@ -261,7 +275,8 @@ class Block:
             rel_x = float(cx) - (frame_w / 2.0)
             rel_y = (frame_h / 2.0) - float(cy)
 
-            # Draw 3D cube with low, subtle 3D factor (tilt angles rx=3.0, ry=3.0, subtle z-extrusion)
+            # Draw 3D cube with a low, subtle 3D factor (tilt angles rx=3.0,
+            # ry=3.0, subtle z-extrusion)
             t3d = Transform3D(
                 x=rel_x, y=rel_y, z=0.0,
                 rx=3.0, ry=3.0, rz=self.angle,
@@ -278,7 +293,7 @@ class Block:
         # Dynamic polygonal contour (corners disappear as block gets damaged)
         corners, inner_cut_edges = self._get_damaged_polygon(cx, cy, w, h, cos_a, sin_a)
 
-        # Material colours & PBR uniforms
+        # Material colors & PBR uniforms
         mat = MATERIALS.get(self.material, MATERIALS["wood"])
         fill_col  = mat["color"]
         dark_col  = mat["dark"]
@@ -312,27 +327,35 @@ class Block:
                 cv2.line(frame, tuple(p1), tuple(p2), grain_col, 1, cv2.LINE_AA)
             for lx, ly in [(-w*.27, -h*.18), (w*.23, h*.22)]:
                 px, py = int(cx + lx*cos_a - ly*sin_a), int(cy + lx*sin_a + ly*cos_a)
-                cv2.ellipse(frame, (px, py), (max(2, w//12), max(1, h//18)), int(-math.degrees(self.angle)), 0, 360, dark_col, 1, cv2.LINE_AA)
+                cv2.ellipse(frame, (px, py), (max(2, w//12), max(1, h//18)),
+                            int(-math.degrees(self.angle)), 0, 360, dark_col, 1, cv2.LINE_AA)
         elif self.material == "stone":
-            for lx, ly, rr in [(-.28, -.23, .08), (.24, -.12, .06), (-.08, .25, .07), (.33, .29, .04)]:
+            for lx, ly, rr in [(-.28, -.23, .08), (.24, -.12, .06),
+                               (-.08, .25, .07), (.33, .29, .04)]:
                 px, py = int(cx + lx*w*cos_a - ly*h*sin_a), int(cy + lx*w*sin_a + ly*h*cos_a)
                 cv2.circle(frame, (px, py), max(1, int(min(w, h)*rr)), grain_col, -1, cv2.LINE_AA)
                 cv2.circle(frame, (px, py), max(1, int(min(w, h)*rr)), dark_col, 1, cv2.LINE_AA)
         elif self.material == "ice":
             for t in (-.35, 0.0, .35):
-                p1 = (int(cx + (-w*.38)*cos_a - (h*t)*sin_a), int(cy + (-w*.38)*sin_a + (h*t)*cos_a))
-                p2 = (int(cx + (w*.32)*cos_a - (h*(t+.24))*sin_a), int(cy + (w*.32)*sin_a + (h*(t+.24))*cos_a))
+                p1 = (int(cx + (-w*.38)*cos_a - (h*t)*sin_a),
+                      int(cy + (-w*.38)*sin_a + (h*t)*cos_a))
+                p2 = (int(cx + (w*.32)*cos_a - (h*(t+.24))*sin_a),
+                      int(cy + (w*.32)*sin_a + (h*(t+.24))*cos_a))
                 cv2.line(frame, p1, p2, grain_col, 1, cv2.LINE_AA)
 
         # PBR Shading & Specular Highlights
         if shader_type == "Transparent": # Ice / Glass
             # Top-left glass refraction glint
-            glint_p1 = (int(cx - (w/2.5)*cos_a + (h/2.5)*sin_a), int(cy - (w/2.5)*sin_a - (h/2.5)*cos_a))
-            glint_p2 = (int(cx + (w/4.0)*cos_a + (h/2.5)*sin_a), int(cy + (w/4.0)*sin_a - (h/2.5)*cos_a))
+            glint_p1 = (int(cx - (w/2.5)*cos_a + (h/2.5)*sin_a),
+                        int(cy - (w/2.5)*sin_a - (h/2.5)*cos_a))
+            glint_p2 = (int(cx + (w/4.0)*cos_a + (h/2.5)*sin_a),
+                        int(cy + (w/4.0)*sin_a - (h/2.5)*cos_a))
             cv2.line(frame, glint_p1, glint_p2, (255, 250, 240), 2)
             # Inner glass refraction diagonal
-            refr_p1 = (int(cx - (w/3.0)*cos_a - (h/4.0)*sin_a), int(cy - (w/3.0)*sin_a + (h/4.0)*cos_a))
-            refr_p2 = (int(cx + (w/3.0)*cos_a + (h/4.0)*sin_a), int(cy + (w/3.0)*sin_a - (h/4.0)*cos_a))
+            refr_p1 = (int(cx - (w/3.0)*cos_a - (h/4.0)*sin_a),
+                       int(cy - (w/3.0)*sin_a + (h/4.0)*cos_a))
+            refr_p2 = (int(cx + (w/3.0)*cos_a + (h/4.0)*sin_a),
+                       int(cy + (w/3.0)*sin_a - (h/4.0)*cos_a))
             cv2.line(frame, refr_p1, refr_p2, (255, 240, 220), 1)
         else: # Standard PBR (Wood / Stone)
             # Directional specular highlight (top edge)
@@ -366,8 +389,9 @@ class Block:
 
     # ── Crack overlays & Edge Chipping ────────────────────────────────────────
 
-    def _draw_damage(self, frame: np.ndarray, cx: float, cy: float, w: float, h: float, cos_a: float, sin_a: float):
-        """Show cumulative damage through material-tailored branching crack networks & corner/edge chips."""
+    def _draw_damage(self, frame: np.ndarray, cx: float, cy: float,
+                     w: float, h: float, cos_a: float, sin_a: float):
+        """Show cumulative damage: material-tailored crack networks and chips."""
         hp_ratio = max(0.0, self.health / self.max_health)
         if hp_ratio >= 0.85:
             return
@@ -447,7 +471,8 @@ class Block:
             bite_r = max(3, int(min(w, h) * (0.07 + (0.6 - hp_ratio) * 0.14)))
             cv2.circle(frame, (bite_x, bite_y), bite_r + 2, crack_dark, -1, cv2.LINE_AA)
             cv2.circle(frame, (bite_x - 1, bite_y - 1), bite_r, chip_col, -1, cv2.LINE_AA)
-            cv2.circle(frame, (bite_x - bite_r//3, bite_y - bite_r//3), max(1, bite_r//3), crack_light, -1, cv2.LINE_AA)
+            cv2.circle(frame, (bite_x - bite_r//3, bite_y - bite_r//3),
+                       max(1, bite_r//3), crack_light, -1, cv2.LINE_AA)
 
         # ── Tier 3: Severe Shatter Fractures & Dual Edge Notches (< 30% HP) ──
         if hp_ratio < 0.3:
@@ -483,7 +508,7 @@ class Target(Block):
     def __init__(self, x: int, y: int, radius: int = 20):
         # We store radius in width/height so AABB collision works reasonably well
         super().__init__(x, y, w=radius*2, h=radius*2, material=TARGET)
-        
+
         # Override health for the target specifically
         from config import TARGET_HEALTH
         self.health = TARGET_HEALTH
@@ -502,8 +527,10 @@ class Target(Block):
         # 0. Ground Drop Shadow under target
         target_scale_x = LIGHTING_SETTINGS.get("SHADOW_SCALE_X", 1.25)
         target_scale_y = LIGHTING_SETTINGS.get("SHADOW_SCALE_Y", 0.35)
-        shadow_w = int(self.radius * target_scale_x * (1.2 - 0.3 * max(0, min(1, (FLOOR_Y - (self.cy + self.radius)) / 160.0))))
-        shadow_h = int(self.radius * target_scale_y * (1.0 - 0.4 * max(0, min(1, (FLOOR_Y - (self.cy + self.radius)) / 160.0))))
+        shadow_w = int(self.radius * target_scale_x * (
+            1.2 - 0.3 * max(0, min(1, (FLOOR_Y - (self.cy + self.radius)) / 160.0))))
+        shadow_h = int(self.radius * target_scale_y * (
+            1.0 - 0.4 * max(0, min(1, (FLOOR_Y - (self.cy + self.radius)) / 160.0))))
         draw_ground_shadow(frame, cx, int(self.cy + self.radius), shadow_w, shadow_h)
 
         # Body. The sphere-plus-hand-drawn-face this used to be is gone; the

@@ -187,10 +187,10 @@ class DuckHunt(LabGame):
         draw_text(canvas, "YOU", self.face[0] - 28, self.face[1] + 8, 0.7, (200, 230, 255), 2)
 
         for duck in self.ducks:
-            colour = tuple(int(c) for c in cv2.cvtColor(
+            color = tuple(int(c) for c in cv2.cvtColor(
                 np.uint8([[[duck.hue, 200, 235]]]), cv2.COLOR_HSV2BGR)[0][0])
             cx, cy = int(duck.x), int(duck.y)
-            cv2.ellipse(canvas, (cx, cy), (22, 14), 0, 0, 360, colour, -1)
+            cv2.ellipse(canvas, (cx, cy), (22, 14), 0, 0, 360, color, -1)
             flap = math.sin(duck.phase * 2.0) * 12
             cv2.ellipse(canvas, (cx, cy - 4), (16, 6), flap, 0, 360, (245, 245, 245), 2)
             cv2.circle(canvas, (cx + 16, cy - 6), 5, (250, 250, 250), -1)

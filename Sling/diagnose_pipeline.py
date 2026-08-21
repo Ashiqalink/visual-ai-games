@@ -19,6 +19,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from engine_bootstrap import ensure_engine
+
 ensure_engine()
 
 DURATION = 8.0
@@ -26,13 +27,15 @@ DURATION = 8.0
 print("=== VisionPipeline Diagnostics ===")
 
 # 1. Module-level MediaPipe state
-from visual_ai.pipeline import HAS_MEDIAPIPE, mp_hands_module, mp_face_detection_module
+from visual_ai.pipeline import HAS_MEDIAPIPE, mp_face_detection_module, mp_hands_module
+
 print(f"HAS_MEDIAPIPE       : {HAS_MEDIAPIPE}")
 print(f"mp_hands_module     : {'loaded' if mp_hands_module else 'MISSING'}")
 print(f"mp_face_module      : {'loaded' if mp_face_detection_module else 'MISSING'}")
 
 # 2. Instantiate pipeline and check detectors
 from visual_ai.pipeline import VisionPipeline
+
 q = queue.Queue(maxsize=2)
 p = VisionPipeline(result_queue=q, width=640, height=480, camera_index=0, noise_duration=0.0)
 print(f"_mp_face            : {'ready' if p._mp_face else 'MISSING'}")

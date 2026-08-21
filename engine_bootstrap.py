@@ -13,6 +13,11 @@ Usage, from any game directory one level below the repo root:
     ensure_engine()
 
     from visual_ai import VisionPipeline
+
+Style note: this file uses .format() and no modern syntax on purpose. It is
+the one module whose job includes running on an UNSUPPORTED interpreter long
+enough to print why - the version check is here - so it stays parseable
+further back than anything else in the repo.
 """
 
 import os
@@ -76,7 +81,7 @@ def ensure_engine():
                 'The usual causes, in order:\n'
                 '  1. The dependencies are not installed in THIS interpreter:\n'
                 '         pip install -r requirements.txt\n'
-                '  2. Python {ver} is outside the supported 3.9-3.12 range.\n'
+                '  2. Python {ver} is outside the supported 3.10-3.12 range.\n'
                 '     mediapipe publishes no wheels for 3.13+, so make the\n'
                 '     venv with a 3.12 interpreter instead.\n\n'
                 'Run `python play.py doctor` for a full report.'.format(
@@ -90,7 +95,7 @@ def ensure_engine():
         'The engine repo was not found. These games import it from a sibling\n'
         'folder; cloning this repo on its own is not enough.\n\n'
         'Looked in:\n'
-        + ''.join('    {}\n'.format(p) for p in searched)
+        + ''.join(f'    {p}\n' for p in searched)
         + '\nFix it by cloning the engine next to this repo:\n'
         '    cd "{parent}"\n'
         '    git clone {url} "{name}"\n\n'

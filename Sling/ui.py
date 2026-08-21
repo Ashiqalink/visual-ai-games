@@ -3,44 +3,45 @@ ui.py — HUD, bird carousel, trajectory preview, click-mode indicator,
          score display, level indicator, FPS counter.
 """
 
+import math
+import os
+import sys
+
 import cv2
 import numpy as np
-import math
-import sys
-import os
-import time
 
-# Ensure visual ai game engine imports are accessible
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine', 'src'))
 # ...and the games root, for the shared how-to-play card. main.py already puts
 # it on the path; doing it here too means ui.py imports standalone as well.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-from visual_ai import Renderer3D, Mesh3D, Transform3D, Camera3D, Material, predict_projectile_trajectory
+from bird import Bird
+from config import (
+    AIR_DRAG,
+    CAROUSEL_PANEL_H,
+    CAROUSEL_SPACING,
+    CAROUSEL_Y,
+    FLOOR_Y,
+    GRAVITY,
+    LEVEL_NAMES,
+    LIGHTING_SETTINGS,
+    SHADOW_COLOR,
+)
+from config import (
+    BIRD_RADII as RADII,
+)
+from config import (
+    HUD_TEXT_COLOR as HUD_TEXT,
+)
+from visual_ai import (
+    Camera3D,
+    Material,
+    Mesh3D,
+    Renderer3D,
+    Transform3D,
+    predict_projectile_trajectory,
+)
 from visual_ai.imaging import blit_ellipse_alpha
 
 from instructions import draw_card
-
-from bird import Bird
-from config import (
-    GRAVITY, AIR_DRAG,
-    FLOOR_Y,
-    BIRD_ORDER, 
-    BIRD_COLOURS as COLOURS, 
-    BIRD_RADII as RADII,
-    HUD_TEXT_COL as HUD_TEXT,
-    SHADOW_COL,
-    TRAJ_COL,
-    OVERLAY_ALPHA,
-    CAROUSEL_Y,
-    CAROUSEL_SPACING,
-    CAROUSEL_PANEL_H,
-    LEVEL_NAMES,
-    LIGHTING_SETTINGS,
-    # Pinch and fire used to be drawn on the canvas by main.py. They are panel
-    # rows now, and keep their original colours so the meaning carries over.
-    CURSOR_PINCH_COL,
-    CURSOR_FIRE_COL,
-)
 
 #: The engine sets ``click_just_fired`` for exactly one frame. At 60fps that is
 #: 16ms of lit text — too short to read, and the on-canvas "FIRE!" flash that
@@ -116,14 +117,44 @@ def _text(frame, txt, pos, scale=0.7, col=HUD_TEXT, thickness=1):
     """Draws text with a drop-shadow for legibility."""
     x, y = pos
     cv2.putText(frame, txt, (x+1, y+1), cv2.FONT_HERSHEY_SIMPLEX,
-                scale, SHADOW_COL, thickness+1, cv2.LINE_AA)
+                scale, SHADOW_COLOR, thickness+1, cv2.LINE_AA)
     cv2.putText(frame, txt, (x, y), cv2.FONT_HERSHEY_SIMPLEX,
                 scale, col, thickness, cv2.LINE_AA)
 
 
+def _star_points(cx: float, cy: float, r_outer: float) -> np.ndarray:
+    """Ten alternating outer/inner vertices of a five-pointed star, apex up."""
+    r_inner = r_outer * 0.382                      # classic pentagram ratio
+    return np.array(
+        [(cx + (r_outer if i % 2 == 0 else r_inner) * math.cos(math.radians(-90 + i * 36)),
+          cy + (r_outer if i % 2 == 0 else r_inner) * math.sin(math.radians(-90 + i * 36)))
+         for i in range(10)],
+        dtype=np.int32,
+    )
+
+
+def _draw_star(frame: np.ndarray, cx: int, cy: int, r: int,
+               col: tuple[int, int, int], filled: bool = True, thickness: int = 2):
+    """
+    A five-pointed star drawn as a polygon, with the same drop-shadow as `_text`.
+
+    Polygons rather than a glyph because cv2.putText only speaks Hershey, which
+    is ASCII-only: the '*'/'o' star characters this used to draw rendered as '?'
+    boxes, so the win screen's whole 1/2/3 rating was invisible.
+    """
+    pts = _star_points(cx, cy, r)
+    shadow = _star_points(cx + 2, cy + 2, r)
+    if filled:
+        cv2.fillPoly(frame, [shadow], SHADOW_COLOR, cv2.LINE_AA)
+        cv2.fillPoly(frame, [pts], col, cv2.LINE_AA)
+    else:
+        cv2.polylines(frame, [shadow], True, SHADOW_COLOR, thickness + 1, cv2.LINE_AA)
+        cv2.polylines(frame, [pts], True, col, thickness, cv2.LINE_AA)
+
+
 def draw_rect_alpha(frame: np.ndarray, x1: int, y1: int, x2: int, y2: int,
                     color: tuple[int, int, int], alpha: float):
-    """Draws a semi-transparent filled rectangle using ROI slicing to avoid full-frame hardcopies."""
+    """Semi-transparent filled rectangle via ROI slicing (no full-frame copy)."""
     h, w = frame.shape[:2]
     x1, y1 = max(0, x1), max(0, y1)
     x2, y2 = min(w, x2), min(h, y2)
@@ -202,7 +233,8 @@ def draw_ground(frame: np.ndarray, floor_y: int = 660):
     np.copyto(frame, _bg_cache)
 
 
-def draw_carousel(frame: np.ndarray, bird_types: list, selected_idx: int, rot_angle_3d: float = 0.0):
+def draw_carousel(frame: np.ndarray, bird_types: list, selected_idx: int,
+                  rot_angle_3d: float = 0.0):
     """
     Draw the bird selection carousel at the top centre with 3D visual_ai element showcase.
 
@@ -243,10 +275,6 @@ def draw_carousel(frame: np.ndarray, bird_types: list, selected_idx: int, rot_an
             cv2.circle(frame, (bx, cy), int(RADII[kind]*scale) + 8,
                        (30, 120, 180), 2)
 
-            # Update 3D showcase rotation on the selected bird
-            pass
-
-
         # Draw miniature bird 2D details
         tmp = Bird(kind, bx, cy)
         tmp.draw(frame, scale=scale)
@@ -268,7 +296,7 @@ def draw_trajectory(frame: np.ndarray,
                     vx: float, vy: float,
                     gravity: float = GRAVITY, air_drag: float = AIR_DRAG, n_dots: int = 40,
                     mass: float = 1.0):
-    """Draw dotted parabolic trajectory preview from launch position using visual_ai trajectory prediction."""
+    """Dotted trajectory preview from launch, via the engine's predictor."""
     # Step duration (dt=1.0 per frame step to match game engine step)
     trajectory_points = predict_projectile_trajectory(
         start_pos=(start_x, start_y),
@@ -331,8 +359,8 @@ def draw_settle_ring(frame: np.ndarray,
           col=col, thickness=2)
 
 
-# Sign -> (label, BGR colour). Kept here so the overlay and the HUD panel
-# below cannot drift apart on naming or colour.
+# Sign -> (label, BGR color). Kept here so the overlay and the HUD panel
+# below cannot drift apart on naming or color.
 SIGN_STYLE = {
     "fist":      ("GRAB",    (0, 140, 255)),
     "open_palm": ("RELEASE", (0, 255, 120)),
@@ -352,7 +380,7 @@ def draw_hand_sign_overlay(frame: np.ndarray, gesture: dict):
     sign, the pinch, the fire — is now read off the HAND SIGN CONTROL panel in
     ``draw_hud``, which lives outside the play area. The markers stay because
     they are the only on-canvas confirmation that tracking is following the
-    right fingers; their colour still encodes the current sign.
+    right fingers; their color still encodes the current sign.
     """
     if not gesture or not gesture.get("hand_visible", False):
         return
@@ -423,7 +451,8 @@ def draw_hud(
     box_w, box_h = 250, 78
     box_x, box_y = w - box_w - 12, 187
     draw_rect_alpha(frame, box_x, box_y, box_x + box_w, box_y + box_h, (15, 18, 28), 0.65)
-    cv2.rectangle(frame, (box_x, box_y), (box_x + box_w, box_y + box_h), (60, 90, 130), 1, cv2.LINE_AA)
+    cv2.rectangle(frame, (box_x, box_y), (box_x + box_w, box_y + box_h),
+                  (60, 90, 130), 1, cv2.LINE_AA)
 
     # Tracking lamp + current sign on one row. Losing the hand is the single
     # most confusing failure, so it keeps the brightest slot.
@@ -518,11 +547,12 @@ def draw_instructions_card(frame: np.ndarray):
               INSTRUCTIONS_CONTROLS, INSTRUCTIONS_KEYS)
 
 
-def draw_done_overlay(frame: np.ndarray, score: int = 0, won: bool = False, stars: int = 0, bonus: int = 0, rot_angle_3d: float = 0.0):
+def draw_done_overlay(frame: np.ndarray, score: int = 0, won: bool = False,
+                      stars: int = 0, bonus: int = 0, rot_angle_3d: float = 0.0):
     """Full-screen semi-transparent 'Done' screen with final score, stars, and 3D victory trophy."""
     h, w = frame.shape[:2]
     draw_rect_alpha(frame, 0, 0, w, h, (10, 10, 10), 0.75)
-    
+
     if won:
         # Render 3D Gold Trophy Pyramid
         _ui_cam3d.screen_width = float(w)
@@ -533,22 +563,27 @@ def draw_done_overlay(frame: np.ndarray, score: int = 0, won: bool = False, star
         mat_gold = Material(base_color=(1.0, 0.84, 0.0, 1.0), opacity=0.95)
         rel_x = 0.0
         rel_y = (h / 2.0) - (h / 2.0 - 140)
-        t_trophy = Transform3D(x=rel_x, y=rel_y, z=0.0, rx=5.0, ry=rot_angle_3d, rz=0.0, sx=1.2, sy=1.2, sz=1.2)
+        t_trophy = Transform3D(x=rel_x, y=rel_y, z=0.0, rx=5.0, ry=rot_angle_3d,
+                               rz=0.0, sx=1.2, sy=1.2, sz=1.2)
         _ui_renderer3d.render_mesh(frame, _trophy_3d_mesh, t_trophy, material=mat_gold)
 
         _text(frame, "LEVEL CLEARED!", (w//2 - 200, h//2 - 90),
               scale=1.8, col=(0, 255, 100), thickness=3)
-        
-        # Draw Stars
-        star_str = "★" * stars + "☆" * (3 - stars)
-        _text(frame, star_str, (w//2 - 120, h//2 - 10), scale=2.5, col=(0, 215, 255), thickness=4)
-        
+
+        # Draw Stars — filled for earned, outlined for not.
+        star_col = (0, 215, 255)
+        star_r, star_gap = 26, 74
+        for i in range(3):
+            _draw_star(frame, w//2 + (i - 1) * star_gap, h//2 - 18, star_r,
+                       star_col, filled=(i < max(0, min(3, stars))))
+
         if bonus > 0:
-            _text(frame, f"Unused Birds Bonus: +{bonus}", (w//2 - 160, h//2 + 40), scale=0.8, col=(180, 220, 255), thickness=2)
+            _text(frame, f"Unused Birds Bonus: +{bonus}", (w//2 - 160, h//2 + 40),
+                  scale=0.8, col=(180, 220, 255), thickness=2)
     else:
         _text(frame, "ALL BIRDS USED!", (w//2 - 200, h//2 - 50),
               scale=1.8, col=(0, 100, 255), thickness=3)
-        
+
     _text(frame, f"Final Score: {score}", (w//2 - 140, h//2 + 90),
           scale=1.2, col=(0, 255, 200), thickness=2)
     _text(frame, "Press  R  to restart  |  1/2/3  to change level",

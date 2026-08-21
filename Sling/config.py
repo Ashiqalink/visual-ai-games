@@ -30,7 +30,8 @@ MAX_PULL       = 170    # maximum slingshot pull radius (px)
 AIR_DRAG       = 0.992  # per-frame velocity multiplier (< 1 = gentle deceleration)
 BIRD_BOUNCE    = 0.35   # bird floor-bounce restitution coefficient
 BIRD_LINGER    = 90     # frames bird stays active after first ground/block impact
-MIN_DAMAGE_VEL = 2.5   # minimum impact speed to deal block-block damage (raised from 1.08 to stop idle-settle damage)
+MIN_DAMAGE_VEL = 2.5   # min impact speed for block-block damage
+                       # (raised from 1.08 to stop idle-settle damage)
 # Damage budget. Peak launch speed is MAX_PULL * POWER_FACTOR ~= 10.2 px/frame,
 # so a full-power Ruby hit lands mass*speed*DAMAGE_FACTOR ~= 82 damage: enough
 # to punch a stone block (44) and carry on. At 4.17 it was 42 — one point short
@@ -110,7 +111,7 @@ ARMED_GRACE_FRAMES = 60     # grace-period frames after equipping a bird (no fir
 MIN_FIRE_PULL      = 15     # min pull distance (px) before firing is allowed
 EDGE_MARGIN        = 40     # px from window edge that triggers edge-exit fire
 
-INPUT_MOVEMENT_MAGNIFICATION = 2.0 # input (x, y) movement magnification factor (e.g. 2.0x double movement)
+INPUT_MOVEMENT_MAGNIFICATION = 2.0  # input (x, y) movement magnification (2.0 = double)
 AIM_PULL_GAIN       = 2.0   # physical hand move -> on-screen pull multiplier
 AIM_EMA_HOLD        = 0.02  # EMA alpha while Z-pushing (freezes aim angle)
 AIM_EMA_MIN         = 0.08  # EMA alpha for fine micro-adjustments
@@ -216,7 +217,7 @@ BIRD_DAMAGE = {RUBY: 1.0, AMBER: 1.35, SLATE: 1.7, AZURE: 0.9, IVORY: 1.2}
 # BGR, to match the OpenCV frames these are drawn onto. Kept in step with the
 # RGB values in BIRD_SPECS below — these tint the trail, impact ring and
 # speed lines, so a mismatch shows up as effects that clash with the sprite.
-BIRD_COLOURS = {
+BIRD_COLORS = {
     RUBY:  (58,  74,  226),
     AMBER: (52,  190, 240),
     SLATE: (96,  82,  74),
@@ -230,19 +231,13 @@ BIRD_MESH_SHAPES = {
     AZURE: "sphere", IVORY: "capsule",
 }
 
-import os
-import sys
-
-# Ensure visual_ai path is accessible for Material and ShaderType imports
-_ENGINE_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine', 'src'))
-if _ENGINE_SRC not in sys.path:
-    sys.path.insert(0, _ENGINE_SRC)
-_ENGINE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine'))
-if _ENGINE_ROOT not in sys.path:
-    sys.path.insert(0, _ENGINE_ROOT)
-
+# The engine is NOT put on sys.path here: the old inserts pointed inside this
+# repo at a "visual ai game engine" directory that does not exist (the clone is
+# a sibling of the repo, one level further up) and so never did anything.
+# main.py's engine_bootstrap is what actually resolves visual_ai; the fallback
+# below covers standalone imports of this module without it.
 try:
-    from visual_ai import Material, ShaderType, CreatureSpec
+    from visual_ai import CreatureSpec, Material, ShaderType
 except ImportError:
     from dataclasses import dataclass
     from enum import Enum
@@ -292,7 +287,7 @@ except ImportError:
 
 #  BLOCK MATERIALS
 # =============================================================================
-# BGR colour values; health/density per material, and visual_ai Material instance
+# BGR color values; health/density per material, and visual_ai Material instance
 BLOCK_MATERIALS = {
     "wood": {
         "health":  22,
@@ -401,7 +396,7 @@ CHARACTER_3D_MATERIALS = {
 # =============================================================================
 # The cast, as data. Each entry is everything the engine needs to draw that
 # creature from both angles — there is no per-character drawing code anywhere
-# in this game. Change a colour here and the sprite changes; add an entry and
+# in this game. Change a color here and the sprite changes; add an entry and
 # a new bird exists.
 #
 # Deliberately plain designs: dot eyes, a small beak, no brows and no crests.
@@ -449,7 +444,7 @@ TARGET_SPEC = CreatureSpec(
 # =============================================================================
 LIGHTING_SETTINGS = {
     "ENABLED": True,              # Global light & shadow master toggle
-    "LIGHT_ANGLE": 45.0,          # Directional light source angle in degrees (top-right light source)
+    "LIGHT_ANGLE": 45.0,          # directional light angle, deg (top-right source)
     "LIGHT_INTENSITY": 0.85,      # Primary light intensity (0.0 to 1.0)
     "AMBIENT_INTENSITY": 0.45,    # Base ambient fill light (0.0 to 1.0)
     "SHADOWS_ENABLED": True,      # Dynamic shadow rendering toggle
@@ -463,9 +458,9 @@ LIGHTING_SETTINGS = {
 
 #  UI COLORS & SETTINGS
 # =============================================================================
-HUD_TEXT_COL = (240, 240, 240)
-SHADOW_COL   = (30, 30, 30)
-TRAJ_COL     = (220, 220, 220)
+HUD_TEXT_COLOR = (240, 240, 240)
+SHADOW_COLOR   = (30, 30, 30)
+TRAJ_COLOR     = (220, 220, 220)
 OVERLAY_ALPHA = 0.45
 
 #  CAROUSEL UI
@@ -477,9 +472,9 @@ CAROUSEL_SELECTION_MAX_Y = 220
 
 #  CURSOR SETTINGS
 # =============================================================================
-CURSOR_INDEX_COL = (0, 255, 200)
-CURSOR_PINCH_COL = (0, 200, 255)
-CURSOR_FIRE_COL  = (0, 80, 255)
+CURSOR_INDEX_COLOR = (0, 255, 200)
+CURSOR_PINCH_COLOR = (0, 200, 255)
+CURSOR_FIRE_COLOR  = (0, 80, 255)
 
 #  LEVEL DIMENSIONS
 # =============================================================================

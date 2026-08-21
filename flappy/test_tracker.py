@@ -9,10 +9,16 @@ actually does) is checked more loosely: it must land at or below its time
 constant (plus half a frame of quantisation), which is where a real one-pole
 filter's lag sits for a signal with actual bandwidth.
 """
-import sys, os, math, random, tempfile, shutil
+import math
+import os
+import random
+import shutil
+import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import tracker, tracker_report
+import tracker
+import tracker_report
 
 # Never touch the real flappy/data: the point of that directory is that it
 # holds the user's own play history.
@@ -32,8 +38,10 @@ class FakeClock:
 clock = FakeClock()
 tracker.time.perf_counter = clock
 
-EASY = {"name": "EASY", "speed": 165.0, "gap": 200, "spacing": 400, "follow_tau": 0.072, "ramp_pipes": 28}
-HARD = {"name": "HARD", "speed": 310.0, "gap": 125, "spacing": 260, "follow_tau": 0.039, "ramp_pipes": 14}
+EASY = {"name": "EASY", "speed": 165.0, "gap": 200, "spacing": 400,
+        "follow_tau": 0.072, "ramp_pipes": 28}
+HARD = {"name": "HARD", "speed": 310.0, "gap": 125, "spacing": 260,
+        "follow_tau": 0.039, "ramp_pipes": 14}
 
 
 def finger(i, rnd):

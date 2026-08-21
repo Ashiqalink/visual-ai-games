@@ -20,44 +20,74 @@ Improvements over original:
   - Slingshot snap-back animation on release
 """
 
-import cv2
 import math
 import random
 import time
+
+import cv2
 import numpy as np
-from bird import Bird
-from config import (BIRD_ORDER, BIRD_COLOURS as COLOURS, BIRD_DAMAGE,
-                    PUNCH_THROUGH_RETAIN, BLOCK_RESIST_MAX)
-from block import Block, Target
-from slingshot import SLING_X, SLING_Y, FORK_LEFT, FORK_RIGHT
-from physics import (
-    POWER_FACTOR, MAX_PULL, FLOOR_Y, BIRD_LINGER,
-    bird_hits_block, distance, magnitude,
-    resolve_block_collision, resolve_bird_block_collision,
-)
 import slingshot
 import ui
-from tracker import NullTracker
+from bird import Bird
+from block import Block, Target
 from config import (
-    PTS_BLOCK, PTS_DEBRIS, PTS_TARGET,
-    SCORE_POPUP_LIFETIME, SCORE_POPUP_RISE,
-    ARMED_GRACE_FRAMES, MIN_FIRE_PULL, EDGE_MARGIN,
-    AIM_PULL_GAIN, INPUT_MOVEMENT_MAGNIFICATION, AIM_EMA_HOLD, AIM_EMA_MIN, AIM_EMA_MAX,
-    AIM_EMA_JITTER_LO, AIM_EMA_JITTER_HI,
-    SEL_DEBOUNCE_FRAMES, Z_PUSH_DETECT_THRESH,
-    DEBRIS_LIFESPAN, DEBRIS_VEL_SPREAD, DEBRIS_VY_KICK,
-    DEBRIS_CARRY_FACTOR, DEBRIS_HEALTH, MAX_DEBRIS,
-
-    PLATFORM_W, PLATFORM_H, PLATFORM_HEALTH,
+    AIM_EMA_JITTER_HI,
+    AIM_EMA_JITTER_LO,
+    AIM_EMA_MAX,
+    AIM_EMA_MIN,
+    AIM_PULL_GAIN,
+    BH,
+    BIRD_DAMAGE,
+    BIRD_LINGER,
+    BIRD_ORDER,
     BIRD_STOP_SPEED,
-    BW, BH, TH, LEVEL_X_OFF, LEVEL_NAMES,
-    CAROUSEL_SPACING, CAROUSEL_SELECTION_MAX_Y,
-    GRAB_RELEASE_FRAMES, LOST_HAND_FIRE_FRAMES,
-    GRIP_RELEASE_OPENNESS, GRIP_RELEASE_FRAMES,
-    GRIP_RELEASE_GATE, GRIP_RELEASE_RATE,
-    READY_SETTLE_FRAMES, READY_SETTLE_RADIUS,
-    READY_MAX_FRAMES, READY_LOST_CANCEL_FRAMES,
+    BLOCK_RESIST_MAX,
+    BW,
+    CAROUSEL_SELECTION_MAX_Y,
+    CAROUSEL_SPACING,
+    DEBRIS_CARRY_FACTOR,
+    DEBRIS_HEALTH,
+    DEBRIS_LIFESPAN,
+    DEBRIS_VEL_SPREAD,
+    DEBRIS_VY_KICK,
+    EDGE_MARGIN,
+    FLOOR_Y,
+    GRAB_RELEASE_FRAMES,
+    GRIP_RELEASE_FRAMES,
+    GRIP_RELEASE_GATE,
+    GRIP_RELEASE_OPENNESS,
+    GRIP_RELEASE_RATE,
+    LEVEL_X_OFF,
+    LOST_HAND_FIRE_FRAMES,
+    MAX_DEBRIS,
+    MAX_PULL,
+    MIN_FIRE_PULL,
+    PLATFORM_H,
+    PLATFORM_HEALTH,
+    PLATFORM_W,
+    POWER_FACTOR,
+    PTS_BLOCK,
+    PTS_DEBRIS,
+    PTS_TARGET,
+    PUNCH_THROUGH_RETAIN,
+    READY_LOST_CANCEL_FRAMES,
+    READY_MAX_FRAMES,
+    READY_SETTLE_FRAMES,
+    READY_SETTLE_RADIUS,
+    SCORE_POPUP_LIFETIME,
+    SCORE_POPUP_RISE,
+    SEL_DEBOUNCE_FRAMES,
+    TH,
 )
+from physics import (
+    bird_hits_block,
+    distance,
+    magnitude,
+    resolve_bird_block_collision,
+    resolve_block_collision,
+)
+from slingshot import SLING_X, SLING_Y
+from tracker import NullTracker
 
 # ── Score constants ────────────────────────────────────────────────────────────────
 # (imported from config above)
@@ -107,7 +137,7 @@ def _level_easy() -> list[Block]:
 
     # Single block on top
     blocks.append(Block(950, FLOOR_Y - BH * 2 - TH, BW, BH, "wood"))
-    
+
     # Target
     blocks.append(Target(950, FLOOR_Y - BH * 2 - TH - 30, radius=20))
 
@@ -400,8 +430,10 @@ class Game:
                                            b.rect[1] + j * hh,
                                            hw, hh,
                                            material=b.material)
-                            debris.vx = (random.random() * 2.0 - 1.0) * DEBRIS_VEL_SPREAD + b.vx * DEBRIS_CARRY_FACTOR
-                            debris.vy = (random.random() * 2.0 - 1.0) * DEBRIS_VEL_SPREAD + b.vy * DEBRIS_CARRY_FACTOR - DEBRIS_VY_KICK
+                            debris.vx = ((random.random() * 2.0 - 1.0) * DEBRIS_VEL_SPREAD
+                                         + b.vx * DEBRIS_CARRY_FACTOR)
+                            debris.vy = ((random.random() * 2.0 - 1.0) * DEBRIS_VEL_SPREAD
+                                         + b.vy * DEBRIS_CARRY_FACTOR - DEBRIS_VY_KICK)
                             debris.health = DEBRIS_HEALTH
                             debris.is_debris = True
                             debris.lifespan = DEBRIS_LIFESPAN
@@ -409,7 +441,7 @@ class Game:
 
         if new_blocks:
             self.blocks.extend(new_blocks)
-            
+
         # ── Enforce Debris Cap ────────────────────────────────────────────
         debris_blocks = [b for b in self.blocks if getattr(b, "is_debris", False) and b.active]
         if len(debris_blocks) > MAX_DEBRIS:
@@ -441,10 +473,11 @@ class Game:
                 # Calculate bonus and stars
                 from config import PTS_UNUSED_BIRD, STAR_1_SCORE, STAR_2_SCORE, STAR_3_SCORE
                 self._final_bonus = len(self.bird_queue) * PTS_UNUSED_BIRD
-                if self.current_bird and self.current_bird.active and not self.current_bird.launched:
+                if (self.current_bird and self.current_bird.active
+                        and not self.current_bird.launched):
                     self._final_bonus += PTS_UNUSED_BIRD
                 self.score += self._final_bonus
-                
+
                 if self.score >= STAR_3_SCORE:
                     self._final_stars = 3
                 elif self.score >= STAR_2_SCORE:
@@ -453,7 +486,7 @@ class Game:
                     self._final_stars = 1
                 else:
                     self._final_stars = 0
-                    
+
                 self.state = "WIN"
 
     def draw(self, frame: np.ndarray):
@@ -483,7 +516,8 @@ class Game:
 
         if self.state == "SELECTION":
             slingshot.draw(frame, bird_pos=None)
-            ui.draw_carousel(frame, self.bird_queue, self.selected_idx, rot_angle_3d=self.rot_angle_3d)
+            ui.draw_carousel(frame, self.bird_queue, self.selected_idx,
+                             rot_angle_3d=self.rot_angle_3d)
 
         elif self.state == "READY":
             # Bird waits on the sling with a slack band — nothing is pulled yet,
@@ -499,7 +533,8 @@ class Game:
                 ui.draw_settle_ring(frame, self._settle_pos[0], self._settle_pos[1],
                                     progress=progress,
                                     radius=READY_SETTLE_RADIUS,
-                                    timeout_progress=min(1.0, self._ready_frames / READY_MAX_FRAMES))
+                                    timeout_progress=min(
+                                        1.0, self._ready_frames / READY_MAX_FRAMES))
 
         elif self.state == "ARMED":
             bird = self.current_bird
@@ -509,9 +544,11 @@ class Game:
             # Depth-layered: back elastic → bird → front elastic + structure
             slingshot.draw_back(frame, bird_pos=bp, pull_dist=pull_d)
             if shake_x or shake_y:
-                bird.x += shake_x; bird.y += shake_y
+                bird.x += shake_x
+                bird.y += shake_y
                 bird.draw(frame)
-                bird.x -= shake_x; bird.y -= shake_y
+                bird.x -= shake_x
+                bird.y -= shake_y
             else:
                 bird.draw(frame)
             slingshot.draw_front(frame, bird_pos=bp, pull_dist=pull_d)
@@ -525,15 +562,19 @@ class Game:
             slingshot.draw(frame, bird_pos=None)
             if self.current_bird and self.current_bird.active:
                 if shake_x or shake_y:
-                    self.current_bird.x += shake_x; self.current_bird.y += shake_y
+                    self.current_bird.x += shake_x
+                    self.current_bird.y += shake_y
                     self.current_bird.draw(frame)
-                    self.current_bird.x -= shake_x; self.current_bird.y -= shake_y
+                    self.current_bird.x -= shake_x
+                    self.current_bird.y -= shake_y
                 else:
                     self.current_bird.draw(frame)
 
         elif self.state in ("DONE", "WIN"):
             slingshot.draw(frame, bird_pos=None)
-            ui.draw_done_overlay(frame, score=self.score, won=(self.state == "WIN"), stars=self._final_stars, bonus=self._final_bonus, rot_angle_3d=self.rot_angle_3d)
+            ui.draw_done_overlay(frame, score=self.score, won=(self.state == "WIN"),
+                                 stars=self._final_stars, bonus=self._final_bonus,
+                                 rot_angle_3d=self.rot_angle_3d)
 
         # Score popups (floating +N text)
         for popup in self.score_popups:
@@ -843,7 +884,8 @@ class Game:
 
         # ── Adaptive EMA smooth ──
         d_dist = math.sqrt((ix - self._smoothed_ix) ** 2 + (iy - self._smoothed_iy) ** 2)
-        scale = max(0.0, min(1.0, (d_dist - AIM_EMA_JITTER_LO) / (AIM_EMA_JITTER_HI - AIM_EMA_JITTER_LO)))
+        scale = max(0.0, min(
+            1.0, (d_dist - AIM_EMA_JITTER_LO) / (AIM_EMA_JITTER_HI - AIM_EMA_JITTER_LO)))
         alpha = AIM_EMA_MIN + scale * (AIM_EMA_MAX - AIM_EMA_MIN)
 
         self._smoothed_ix = alpha * ix + (1 - alpha) * self._smoothed_ix
@@ -993,7 +1035,7 @@ class Game:
         return math.sqrt(rel_dx * rel_dx + rel_dy * rel_dy)
 
     def _launch_velocity(self) -> tuple[float, float]:
-        """Compute launch vx/vy from pull position vs slingshot anchor, scaling power factor for larger/heavier birds."""
+        """Launch vx/vy from pull vs anchor, power scaled for heavier birds."""
         bird = self.current_bird
         dx = SLING_X - bird.x
         dy = SLING_Y - bird.y

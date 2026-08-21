@@ -5,7 +5,8 @@ Not a real game, a testbed: on launch the pipeline's face detector frames the
 player, who holds still for a short countdown, then one frame is grabbed from
 the live pipeline, matted to a transparent cutout, and that cutout becomes the
 paddle sprite for the rest of the session. Gameplay after that is driven by
-the hand, but the capture is not — see main() for why the face runs it. Everything downstream of capture (movement, collisions, score)
+the hand, but the capture is not — see main() for why the face runs it.
+Everything downstream of capture (movement, collisions, score)
 is placeholder catch-the-falling-shapes gameplay — the point being tested is
 the capture -> matte -> reuse pipeline, not this game design.
 
@@ -35,10 +36,10 @@ VisionPipeline.emit_person_mask instead.
 """
 
 import os
-import sys
-import time
 import queue
 import random
+import sys
+import time
 
 import cv2
 import numpy as np
@@ -49,11 +50,20 @@ if BASE_DIR not in sys.path:
 sys.path.insert(0, os.path.join(BASE_DIR, '..'))
 
 from engine_bootstrap import ensure_engine
+
 ensure_engine()
 
 from visual_ai import VisionPipeline, cut_out_person
-from visual_ai.imaging import (bgr_to_rgb, clipped_fraction, normalize_lighting,
-                               pad_to, remove_background, resize as resize_rgba)
+from visual_ai.imaging import (
+    bgr_to_rgb,
+    clipped_fraction,
+    normalize_lighting,
+    pad_to,
+    remove_background,
+)
+from visual_ai.imaging import resize as resize_rgba
+
+from gameloop import drain, draw_text
 
 W, H = 800, 600
 TITLE = "Avatar Catch (test harness)"
@@ -130,7 +140,7 @@ def build_sprite(rgba: np.ndarray, matted: bool,
     # pad_to trims to what the matte actually kept and fits that on a square
     # canvas, so the player is not squashed by the frame's 4:3 aspect. It
     # resizes alpha-aware too — resampling straight alpha would drag
-    # background colour into the soft hair edges MODNet is here to get right.
+    # background color into the soft hair edges MODNet is here to get right.
     sprite = pad_to(rgba, AVATAR_SIZE, fit=1.0)
     kept = float(sprite[..., 3].mean()) / 255.0
     note = (f"{MATTE_BACKEND} matte - {kept:.0%} kept, "
@@ -149,10 +159,6 @@ def capture_avatar(bgr_frame: np.ndarray,
     rgba, matted = matte_frame(bgr_frame)
     return build_sprite(rgba, matted, lighting)
 
-
-def draw_text(img, text, x, y, size=1.0, color=(255, 255, 255), thickness=2):
-    cv2.putText(img, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, size, (0, 0, 0), thickness + 2)
-    cv2.putText(img, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, size, color, thickness)
 
 
 def blit_rgba(dst_bgr, rgba, cx, cy):
@@ -218,11 +224,13 @@ def main():
     lives = 3
     frame_count = 0
 
+    # One canvas for the whole session, refilled each frame. Allocating a fresh
+    # (H, W, 3) buffer at 60 Hz hands the allocator ~1 MB a frame to churn for
+    # no reason — the previous frame's pixels are all overwritten anyway.
+    canvas = np.zeros((H, W, 3), dtype=np.uint8)
+
     while True:
-        try:
-            latest = ai_queue.get_nowait()
-        except queue.Empty:
-            latest = None
+        latest = drain(ai_queue)
 
         # The queue only refills at camera rate, so most loop iterations drain
         # nothing. Everything below reads the last known frame and face rather
@@ -237,7 +245,6 @@ def main():
                 index_x = float(latest.get("index_pos", (W // 2, 0))[0])
                 paddle_x = paddle_x * 0.7 + index_x * 0.3
 
-        canvas = np.zeros((H, W, 3), dtype=np.uint8)
         canvas[:] = (30, 25, 20)
 
         if state == STATE_CAPTURE:
@@ -276,7 +283,8 @@ def main():
 
             if not consented:
                 draw_text(canvas, "Press SPACE to take your photo", W // 2 - 250, 40, 0.9)
-                draw_text(canvas, "Q to quit without one", W // 2 - 130, 70, 0.6, (180, 180, 180), 1)
+                draw_text(canvas, "Q to quit without one",
+                          W // 2 - 130, 70, 0.6, (180, 180, 180), 1)
             else:
                 draw_text(canvas, "Look at the camera and hold still",
                           W // 2 - 240, 40, 0.8)
@@ -284,13 +292,15 @@ def main():
             if hold_start is not None:
                 elapsed = time.time() - hold_start
                 remaining = max(0.0, HOLD_STILL_SECONDS - elapsed)
-                draw_text(canvas, f"Capturing in {remaining:0.1f}s", W // 2 - 120, H // 2, 1.2, (0, 255, 255))
+                draw_text(canvas, f"Capturing in {remaining:0.1f}s",
+                          W // 2 - 120, H // 2, 1.2, (0, 255, 255))
                 if elapsed >= HOLD_STILL_SECONDS and cam_frame is not None:
                     # matte_frame blocks, and on the very first run it blocks
                     # for seconds while 25 MB of MODNet weights download. Paint
                     # the reason before handing over the thread, or the window
                     # just freezes at "Capturing in 0.0s" with nothing to read.
-                    draw_text(canvas, "Cutting you out...", W // 2 - 130, H // 2 + 60, 0.9, (0, 255, 255))
+                    draw_text(canvas, "Cutting you out...",
+                              W // 2 - 130, H // 2 + 60, 0.9, (0, 255, 255))
                     draw_text(canvas, "first run also downloads 25 MB of matting weights",
                               W // 2 - 250, H // 2 + 90, 0.55, (150, 200, 255), 1)
                     cv2.imshow(TITLE, canvas)
@@ -302,7 +312,9 @@ def main():
             elif consented:
                 draw_text(canvas, "Waiting for a face...", W // 2 - 140, H // 2, 0.9, (0, 180, 255))
 
-            draw_text(canvas, "Your photo stays on this machine - never saved to disk, never uploaded",
+            draw_text(canvas,
+                      "Your photo stays on this machine - never saved to disk, "
+                      "never uploaded",
                       20, H - 20, 0.5, (150, 220, 150), 1)
 
         elif state == STATE_PLAYING:
@@ -342,6 +354,12 @@ def main():
                       W // 2 - 220, H // 2 + 150, 0.7)
 
         cv2.imshow(TITLE, canvas)
+        # NOT frame_pacer(), unlike flappy and punchy: this loop is entirely
+        # iteration-driven -- shapes fall a fixed step per iteration and spawn
+        # on `frame_count % SPAWN_EVERY` -- so pacing it properly would take it
+        # from ~32 fps to 60 and make the game nearly twice as fast. That is the
+        # same trade punchy made deliberately; making it here means converting
+        # these counts to durations first.
         key = cv2.waitKey(16) & 0xFF
         if key in (27, ord('q')):
             break

@@ -39,17 +39,24 @@ if BASE_DIR not in sys.path:
 sys.path.insert(0, os.path.join(BASE_DIR, '..'))
 
 from engine_bootstrap import ensure_engine
+
 ensure_engine()
+
+#: The one OpenCV window every imshow targets.
+WINDOW = "Sling"
 
 # config.py depends on nothing but os/sys, so the window geometry is available
 # before the expensive imports below — see _splash().
 from config import (
-    FRAME_W, FRAME_H, BG_COLOR,
-    CAM_W, CAM_H, CAM_MARGIN, CAM_BORDER, CAM_BORDER_COLOR,
+    BG_COLOR,
+    CAM_BORDER,
+    CAM_BORDER_COLOR,
+    CAM_H,
+    CAM_MARGIN,
+    CAM_W,
+    FRAME_H,
+    FRAME_W,
     SMOOTH_ALPHA,
-    # CURSOR_PINCH_COL / CURSOR_FIRE_COL are no longer drawn on the canvas —
-    # ui.py uses them for the pinch and fire rows of the HUD panel instead.
-    CURSOR_INDEX_COL,
 )
 
 
@@ -69,40 +76,52 @@ def _splash(message: str):
                 cv2.FONT_HERSHEY_SIMPLEX, 2.2, (60, 200, 255), 4, cv2.LINE_AA)
     cv2.putText(canvas, message, (FRAME_W // 2 - 110, FRAME_H // 2 + 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (140, 190, 225), 1, cv2.LINE_AA)
-    cv2.namedWindow("Sling", cv2.WINDOW_NORMAL)
-    cv2.resizeWindow("Sling", FRAME_W, FRAME_H)
-    cv2.imshow("Sling", canvas)
+    cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(WINDOW, FRAME_W, FRAME_H)
+    cv2.imshow(WINDOW, canvas)
     cv2.waitKey(1)
 
 
 _splash("Loading vision engine...")
 
 import psutil
+
 try:
     import GPUtil
     GPUTIL_AVAILABLE = True
 except ImportError:
     GPUTIL_AVAILABLE = False
 
-from visual_ai import VisionPipeline, CPP_ENGINE_AVAILABLE
+from visual_ai import CPP_ENGINE_AVAILABLE, VisionPipeline
 
 _splash("Preparing game...")
 
-from game import Game
-from slingshot import SLING_X, SLING_Y
-from tracker import RunTracker, tracking_enabled
 import ui
 
 # Only the tuning a run's numbers have to be read against — a log that does not
 # say which settings produced it cannot be compared with the next one.
 from config import (
-    AIM_PULL_GAIN as _CFG_GAIN, MIN_FIRE_PULL as _CFG_MIN_PULL,
-    GRIP_RELEASE_OPENNESS as _CFG_GRIP_OPEN,
+    AIM_PULL_GAIN as _CFG_GAIN,
+)
+from config import (
     GRIP_RELEASE_FRAMES as _CFG_GRIP_FRAMES,
+)
+from config import (
+    GRIP_RELEASE_OPENNESS as _CFG_GRIP_OPEN,
+)
+from config import MAX_PULL as _CFG_MAX_PULL
+from config import (
+    MIN_FIRE_PULL as _CFG_MIN_PULL,
+)
+from config import (
     READY_SETTLE_FRAMES as _CFG_SETTLE_FRAMES,
+)
+from config import (
     READY_SETTLE_RADIUS as _CFG_SETTLE_RADIUS,
 )
-from physics import MAX_PULL as _CFG_MAX_PULL
+from game import Game
+from slingshot import SLING_X, SLING_Y
+from tracker import RunTracker, tracking_enabled
 
 
 def _tracker_settings() -> dict:
@@ -130,14 +149,14 @@ def _draw_system_metrics(canvas: np.ndarray):
     """Draw live CPU and GPU usage metrics on HUD (smoothed & throttled updates)."""
     global _last_metrics_time, _cached_cpu, _cached_gpu_str
     now = time.time()
-    
+
     # Update reading every 500ms so numbers don't flicker uncontrollably
     if now - _last_metrics_time > 0.5:
         _last_metrics_time = now
         raw_cpu = psutil.cpu_percent(interval=None)
         # Exponential Moving Average smoothing
         _cached_cpu = 0.7 * _cached_cpu + 0.3 * raw_cpu if _cached_cpu > 0 else raw_cpu
-        
+
         if GPUTIL_AVAILABLE:
             try:
                 gpus = GPUtil.getGPUs()
@@ -146,7 +165,7 @@ def _draw_system_metrics(canvas: np.ndarray):
                     _cached_gpu_str = f"{gpu_val:.1f}%"
             except Exception:
                 _cached_gpu_str = "N/A"
-            
+
     # Small single line under the score card — the boxed cyan banner this used
     # to be sat directly on top of the score.
     text = f"CPU {_cached_cpu:.0f}%  GPU {_cached_gpu_str}"
@@ -215,8 +234,8 @@ def main():
 
     game    = Game(frame_w=FRAME_W, frame_h=FRAME_H)
 
-    cv2.namedWindow("Sling", cv2.WINDOW_NORMAL)
-    cv2.resizeWindow("Sling", FRAME_W, FRAME_H)
+    cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(WINDOW, FRAME_W, FRAME_H)
 
     # ── FPS & Timing setup ────────────────────────────────────────────────
     prev_time = time.time()
@@ -318,7 +337,7 @@ def main():
             ui.draw_instructions_card(canvas)
             cv2.putText(canvas, "Starting camera...", (FRAME_W // 2 - 90, FRAME_H - 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (120, 180, 220), 1, cv2.LINE_AA)
-            cv2.imshow("Sling", canvas)
+            cv2.imshow(WINDOW, canvas)
             if _paced_key() in (ord('q'), ord('Q'), 27):
                 pipeline.stop()
                 cv2.destroyAllWindows()
@@ -367,7 +386,8 @@ def main():
             # L — ToF depth stabilizer (lid-shake calibration)
             if key in (ord('k'), ord('K')):
                 on = pipeline.toggle_smoothing()
-                print(f"[Stabilisation] Landmark smoothing: {'ON' if on else 'OFF (raw positions)'}")
+                print("[Stabilisation] Landmark smoothing: "
+                      f"{'ON' if on else 'OFF (raw positions)'}")
             if key in (ord('l'), ord('L')):
                 tof_stab_on = not tof_stab_on
                 if tof_stab_on:
@@ -459,7 +479,7 @@ def main():
         if showing_help:
             ui.draw_instructions_card(canvas)
 
-        cv2.imshow("Sling", canvas)
+        cv2.imshow(WINDOW, canvas)
 
         if key in (ord('q'), ord('Q'), 27):
             break

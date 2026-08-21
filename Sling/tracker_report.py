@@ -43,15 +43,14 @@ The numbers worth reading first:
                   tighter than a real hand can hold.
 """
 
-import os
-import sys
 import math
+import os
 import statistics
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from tracker import (DATA_DIR, STATE_CODES, disable_here, enable_here,
-                     load_runs, tracking_enabled)
+from tracker import DATA_DIR, STATE_CODES, disable_here, enable_here, load_runs, tracking_enabled
 
 MAX_LAG_FRAMES = 30   # logged frames, i.e. 30 * stride real frames
 
@@ -278,7 +277,7 @@ def report(runs, show_runs=False, show_shots=False):
               f"{statistics.fmean([r['duration_s'] for r in group]):6.1f} "
               f"{shots:6d}  {cause_str}")
 
-    print("\nRELEASE  (the %.0f ms before the bird leaves)" % RELEASE_MS)
+    print(f"\nRELEASE  (the {RELEASE_MS:.0f} ms before the bird leaves)")
     print("  positive angle drift = the aim fell before the shot left;"
           "\n  negative pull drift  = the pull collapsed, so it fires short")
     print(f"  {'cause':7s} {'shots':>5s} {'angle deg':>10s} {'|angle|':>8s} "

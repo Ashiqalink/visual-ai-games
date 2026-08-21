@@ -2,15 +2,21 @@
 test_3d_integration.py — Integration test to verify visual_ai 3D elements in Sling.
 """
 
-import sys
 import os
+import sys
+
 import numpy as np
-import cv2
 
-# Ensure visual ai game engine is on path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine'))
+# This runs standalone (play sling-3d-test is not a thing; it is invoked as a
+# script), so resolve the engine the way every game entry does. The old insert
+# here pointed at a directory inside this repo that does not exist.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from engine_bootstrap import ensure_engine
 
-from visual_ai import Renderer3D, Mesh3D, Transform3D, Camera3D, Material
+ensure_engine()
+
+from visual_ai import Camera3D, Material, Mesh3D, Renderer3D, Transform3D
+
 
 def test_3d_rendering():
     print("[TEST] Initializing 3D Camera and Renderer...")
@@ -76,7 +82,7 @@ def test_game_3d_integration():
 def test_block_3d_rendering():
     print("[TEST] Testing 3D Block rendering position accuracy...")
     from block import Block
-    
+
     blk = Block(x=800, y=400, w=60, h=60, material="wood")
     canvas = np.zeros((720, 1280, 3), dtype=np.uint8)
     blk.draw(canvas, render_3d=True)
@@ -84,7 +90,8 @@ def test_block_3d_rendering():
     # Check non-zero pixels around (830, 430)
     center_roi = canvas[400:460, 800:860]
     nonzero_center = np.count_nonzero(center_roi)
-    print(f"[TEST] Block rendered at (800, 400) with {nonzero_center} non-zero pixels in target ROI.")
+    print(f"[TEST] Block rendered at (800, 400) with {nonzero_center} "
+          "non-zero pixels in target ROI.")
     assert nonzero_center > 100, f"Block pixels did not land in target ROI! Count: {nonzero_center}"
     print("[SUCCESS] 3D Block position accuracy verified.")
     return True
