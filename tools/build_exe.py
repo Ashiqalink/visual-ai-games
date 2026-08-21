@@ -58,7 +58,7 @@ ROOT_MODULES = ["engine_bootstrap.py", "gameloop.py", "instructions.py",
 #: Pulled in at runtime by name, so the import graph never mentions them.
 HIDDEN = [
     "visual_ai", "visual_ai.pipeline", "visual_ai.fallback_engine",
-    "visual_ai.noise_filter", "visual_ai.tof_stabilizer",
+    "visual_ai.noise_filter", "visual_ai.depth_stabilizer",
     "visual_ai.jitter_analyzer", "visual_ai.math_utils",
     "visual_ai.gesture_math", "visual_ai.render3d", "visual_ai.material",
     "visual_ai.spritegen", "visual_ai.imaging", "visual_ai.matting",
