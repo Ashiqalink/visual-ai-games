@@ -420,10 +420,13 @@ def _venv_python(venv: Path) -> Path | None:
 
 def _has_cv2(python: Path) -> bool:
     """Cheap check: is OpenCV installed next to this interpreter?"""
-    site = python.parent.parent / ("Lib/site-packages" if os.name == "nt" else "lib")
-    if (site / "cv2").exists():
-        return True
-    return any(p.name == "cv2" for p in site.glob("*/cv2")) if site.exists() else False
+    prefix = python.parent.parent
+    if os.name == "nt":
+        roots = [prefix / "Lib" / "site-packages"]
+    else:
+        # POSIX buries site-packages one level deeper, under the version dir.
+        roots = sorted(prefix.glob("lib/python*/site-packages"))
+    return any((root / "cv2").exists() for root in roots)
 
 
 def interpreter_for(title: Title) -> tuple[Path, str]:

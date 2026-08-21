@@ -44,7 +44,6 @@ from config import (
     BLOCK_RESIST_MAX,
     BW,
     CAROUSEL_SELECTION_MAX_Y,
-    CAROUSEL_SPACING,
     DEBRIS_CARRY_FACTOR,
     DEBRIS_HEALTH,
     DEBRIS_LIFESPAN,
@@ -617,9 +616,7 @@ class Game:
             return
 
         # Carousel area parameters (top-center panel: y <= CAROUSEL_SELECTION_MAX_Y)
-        spacing = CAROUSEL_SPACING
-        panel_w = spacing * total + 80
-        panel_x = self.W // 2 - panel_w // 2
+        panel_x, panel_w = ui.carousel_panel(self.W, total)
 
         # Selecting bird can only be chosen once cursor goes into the carousel area
         in_selection_area = (iy <= CAROUSEL_SELECTION_MAX_Y)

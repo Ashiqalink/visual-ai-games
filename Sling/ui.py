@@ -17,6 +17,7 @@ from bird import Bird
 from config import (
     AIR_DRAG,
     CAROUSEL_PANEL_H,
+    CAROUSEL_PANEL_PAD,
     CAROUSEL_SPACING,
     CAROUSEL_Y,
     FLOOR_Y,
@@ -233,6 +234,17 @@ def draw_ground(frame: np.ndarray, floor_y: int = 660):
     np.copyto(frame, _bg_cache)
 
 
+def carousel_panel(frame_width: int, total: int) -> tuple[int, int]:
+    """
+    Left edge and width of the carousel panel holding ``total`` birds.
+
+    game.py hit-tests the carousel against this and draw_carousel paints it;
+    they have to agree, so the geometry is worked out here only.
+    """
+    panel_w = CAROUSEL_SPACING * total + CAROUSEL_PANEL_PAD
+    return frame_width // 2 - panel_w // 2, panel_w
+
+
 def draw_carousel(frame: np.ndarray, bird_types: list, selected_idx: int,
                   rot_angle_3d: float = 0.0):
     """
@@ -256,9 +268,8 @@ def draw_carousel(frame: np.ndarray, bird_types: list, selected_idx: int,
     _ui_cam3d.position[2] = _ui_cam3d.focal_length
 
     # Background panel (alpha blended via ROI slice)
-    panel_w = spacing * len(bird_types) + 80
+    px, panel_w = carousel_panel(w, len(bird_types))
     panel_h = CAROUSEL_PANEL_H
-    px      = cx - panel_w // 2
     draw_rect_alpha(frame, px, cy - 60, px + panel_w, cy + panel_h - 60, (28, 22, 16), 0.55)
     cv2.rectangle(frame, (px, cy-60), (px+panel_w, cy+panel_h-60), (140, 110, 70), 1, cv2.LINE_AA)
 
