@@ -10,7 +10,8 @@
 #
 #     pip install -e "../visual ai game engine"
 #
-# Requires Python 3.9-3.12. mediapipe publishes no wheels for 3.13+.
+# Requires Python 3.10-3.12: mediapipe publishes no wheels for 3.13+, and
+# the engine's signatures need 3.10 (see its requires-python).
 
 opencv-python>=4.8.0
 numpy>=1.24.0

@@ -77,9 +77,12 @@ ENV_SMOOTH = "VISUAL_AI_SMOOTH"
 ENV_TOF = "VISUAL_AI_TOF"
 ENV_ENTRY = "VISUAL_AI_ENTRY"
 
-#: Python versions mediapipe publishes wheels for. Checked up front because the
-#: failure otherwise surfaces as an opaque pip resolver error.
-MIN_PY = (3, 9)
+#: The supported interpreter range, checked up front because the failure
+#: otherwise surfaces as an opaque error. The ceiling is mediapipe's (no
+#: wheels for 3.13+); the floor is the engine's, which uses PEP-604 unions in
+#: signatures evaluated at def time and so raises TypeError on import under
+#: 3.9. Matches the engine's requires-python.
+MIN_PY = (3, 10)
 MAX_PY = (3, 12)
 
 KIND_ORDER = ("game", "demo", "playground", "tool")

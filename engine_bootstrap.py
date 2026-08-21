@@ -76,7 +76,7 @@ def ensure_engine():
                 'The usual causes, in order:\n'
                 '  1. The dependencies are not installed in THIS interpreter:\n'
                 '         pip install -r requirements.txt\n'
-                '  2. Python {ver} is outside the supported 3.9-3.12 range.\n'
+                '  2. Python {ver} is outside the supported 3.10-3.12 range.\n'
                 '     mediapipe publishes no wheels for 3.13+, so make the\n'
                 '     venv with a 3.12 interpreter instead.\n\n'
                 'Run `python play.py doctor` for a full report.'.format(
