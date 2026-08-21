@@ -30,7 +30,8 @@ MAX_PULL       = 170    # maximum slingshot pull radius (px)
 AIR_DRAG       = 0.992  # per-frame velocity multiplier (< 1 = gentle deceleration)
 BIRD_BOUNCE    = 0.35   # bird floor-bounce restitution coefficient
 BIRD_LINGER    = 90     # frames bird stays active after first ground/block impact
-MIN_DAMAGE_VEL = 2.5   # minimum impact speed to deal block-block damage (raised from 1.08 to stop idle-settle damage)
+MIN_DAMAGE_VEL = 2.5   # min impact speed for block-block damage
+                       # (raised from 1.08 to stop idle-settle damage)
 # Damage budget. Peak launch speed is MAX_PULL * POWER_FACTOR ~= 10.2 px/frame,
 # so a full-power Ruby hit lands mass*speed*DAMAGE_FACTOR ~= 82 damage: enough
 # to punch a stone block (44) and carry on. At 4.17 it was 42 — one point short
@@ -110,7 +111,7 @@ ARMED_GRACE_FRAMES = 60     # grace-period frames after equipping a bird (no fir
 MIN_FIRE_PULL      = 15     # min pull distance (px) before firing is allowed
 EDGE_MARGIN        = 40     # px from window edge that triggers edge-exit fire
 
-INPUT_MOVEMENT_MAGNIFICATION = 2.0 # input (x, y) movement magnification factor (e.g. 2.0x double movement)
+INPUT_MOVEMENT_MAGNIFICATION = 2.0  # input (x, y) movement magnification (2.0 = double)
 AIM_PULL_GAIN       = 2.0   # physical hand move -> on-screen pull multiplier
 AIM_EMA_HOLD        = 0.02  # EMA alpha while Z-pushing (freezes aim angle)
 AIM_EMA_MIN         = 0.08  # EMA alpha for fine micro-adjustments
@@ -443,7 +444,7 @@ TARGET_SPEC = CreatureSpec(
 # =============================================================================
 LIGHTING_SETTINGS = {
     "ENABLED": True,              # Global light & shadow master toggle
-    "LIGHT_ANGLE": 45.0,          # Directional light source angle in degrees (top-right light source)
+    "LIGHT_ANGLE": 45.0,          # directional light angle, deg (top-right source)
     "LIGHT_INTENSITY": 0.85,      # Primary light intensity (0.0 to 1.0)
     "AMBIENT_INTENSITY": 0.45,    # Base ambient fill light (0.0 to 1.0)
     "SHADOWS_ENABLED": True,      # Dynamic shadow rendering toggle

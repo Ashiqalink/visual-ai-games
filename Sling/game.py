@@ -430,8 +430,10 @@ class Game:
                                            b.rect[1] + j * hh,
                                            hw, hh,
                                            material=b.material)
-                            debris.vx = (random.random() * 2.0 - 1.0) * DEBRIS_VEL_SPREAD + b.vx * DEBRIS_CARRY_FACTOR
-                            debris.vy = (random.random() * 2.0 - 1.0) * DEBRIS_VEL_SPREAD + b.vy * DEBRIS_CARRY_FACTOR - DEBRIS_VY_KICK
+                            debris.vx = ((random.random() * 2.0 - 1.0) * DEBRIS_VEL_SPREAD
+                                         + b.vx * DEBRIS_CARRY_FACTOR)
+                            debris.vy = ((random.random() * 2.0 - 1.0) * DEBRIS_VEL_SPREAD
+                                         + b.vy * DEBRIS_CARRY_FACTOR - DEBRIS_VY_KICK)
                             debris.health = DEBRIS_HEALTH
                             debris.is_debris = True
                             debris.lifespan = DEBRIS_LIFESPAN
@@ -471,7 +473,8 @@ class Game:
                 # Calculate bonus and stars
                 from config import PTS_UNUSED_BIRD, STAR_1_SCORE, STAR_2_SCORE, STAR_3_SCORE
                 self._final_bonus = len(self.bird_queue) * PTS_UNUSED_BIRD
-                if self.current_bird and self.current_bird.active and not self.current_bird.launched:
+                if (self.current_bird and self.current_bird.active
+                        and not self.current_bird.launched):
                     self._final_bonus += PTS_UNUSED_BIRD
                 self.score += self._final_bonus
                 
@@ -513,7 +516,8 @@ class Game:
 
         if self.state == "SELECTION":
             slingshot.draw(frame, bird_pos=None)
-            ui.draw_carousel(frame, self.bird_queue, self.selected_idx, rot_angle_3d=self.rot_angle_3d)
+            ui.draw_carousel(frame, self.bird_queue, self.selected_idx,
+                             rot_angle_3d=self.rot_angle_3d)
 
         elif self.state == "READY":
             # Bird waits on the sling with a slack band — nothing is pulled yet,
@@ -529,7 +533,8 @@ class Game:
                 ui.draw_settle_ring(frame, self._settle_pos[0], self._settle_pos[1],
                                     progress=progress,
                                     radius=READY_SETTLE_RADIUS,
-                                    timeout_progress=min(1.0, self._ready_frames / READY_MAX_FRAMES))
+                                    timeout_progress=min(
+                                        1.0, self._ready_frames / READY_MAX_FRAMES))
 
         elif self.state == "ARMED":
             bird = self.current_bird
@@ -567,7 +572,9 @@ class Game:
 
         elif self.state in ("DONE", "WIN"):
             slingshot.draw(frame, bird_pos=None)
-            ui.draw_done_overlay(frame, score=self.score, won=(self.state == "WIN"), stars=self._final_stars, bonus=self._final_bonus, rot_angle_3d=self.rot_angle_3d)
+            ui.draw_done_overlay(frame, score=self.score, won=(self.state == "WIN"),
+                                 stars=self._final_stars, bonus=self._final_bonus,
+                                 rot_angle_3d=self.rot_angle_3d)
 
         # Score popups (floating +N text)
         for popup in self.score_popups:
@@ -877,7 +884,8 @@ class Game:
 
         # ── Adaptive EMA smooth ──
         d_dist = math.sqrt((ix - self._smoothed_ix) ** 2 + (iy - self._smoothed_iy) ** 2)
-        scale = max(0.0, min(1.0, (d_dist - AIM_EMA_JITTER_LO) / (AIM_EMA_JITTER_HI - AIM_EMA_JITTER_LO)))
+        scale = max(0.0, min(
+            1.0, (d_dist - AIM_EMA_JITTER_LO) / (AIM_EMA_JITTER_HI - AIM_EMA_JITTER_LO)))
         alpha = AIM_EMA_MIN + scale * (AIM_EMA_MAX - AIM_EMA_MIN)
 
         self._smoothed_ix = alpha * ix + (1 - alpha) * self._smoothed_ix
@@ -1027,7 +1035,7 @@ class Game:
         return math.sqrt(rel_dx * rel_dx + rel_dy * rel_dy)
 
     def _launch_velocity(self) -> tuple[float, float]:
-        """Compute launch vx/vy from pull position vs slingshot anchor, scaling power factor for larger/heavier birds."""
+        """Launch vx/vy from pull vs anchor, power scaled for heavier birds."""
         bird = self.current_bird
         dx = SLING_X - bird.x
         dy = SLING_Y - bird.y

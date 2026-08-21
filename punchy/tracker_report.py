@@ -180,7 +180,9 @@ def report(runs, show_runs=False):
         print("  no punches logged yet")
     else:
         thr = thresholds[0] if len(thresholds) == 1 else None
-        print(f"  threshold        {_fmt(thr, '7.4f') if thr is not None else 'varies: ' + ', '.join(f'{t:.4f}' for t in thresholds)}")
+        thr_text = (_fmt(thr, '7.4f') if thr is not None
+                    else 'varies: ' + ', '.join(f'{t:.4f}' for t in thresholds))
+        print(f"  threshold        {thr_text}")
         print(f"  landed punches   {len(margins)}   "
               f"margin over threshold: weakest {min(margins):+.4f}  "
               f"median {statistics.median(margins):+.4f}  "

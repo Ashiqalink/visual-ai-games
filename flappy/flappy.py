@@ -298,7 +298,8 @@ def draw_tracking_status(canvas, hand_visible, w=800):
     status_col = (0, 255, 0) if hand_visible else (0, 0, 255)
     status_text = "TRACKING" if hand_visible else "NO HAND"
     cv2.circle(canvas, (x0, y0), 8, status_col, -1)
-    cv2.putText(canvas, status_text, (x0 + 15, y0 + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_col, 2)
+    cv2.putText(canvas, status_text, (x0 + 15, y0 + 5),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_col, 2)
 
 def main():
     print("Starting Flappy...")
@@ -432,7 +433,9 @@ def main():
             smoothing_on = latest.get("smoothing_enabled", True)
         draw_text(frame, f"Smoothing: {'ON' if smoothing_on else 'OFF'}", 20, 80, 0.7,
                   (0, 255, 0) if smoothing_on else (0, 180, 255))
-        draw_text(frame, "Raise/lower your index finger to fly  |  1/2/3: difficulty  |  T: tracking  |  H: how to play  |  K: smoothing",
+        draw_text(frame,
+                  "Raise/lower your index finger to fly  |  1/2/3: difficulty  |  "
+                  "T: tracking  |  H: how to play  |  K: smoothing",
                   20, H - 20, 0.5, (150, 150, 150))
 
         if game_over:

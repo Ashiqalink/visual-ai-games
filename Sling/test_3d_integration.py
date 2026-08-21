@@ -90,7 +90,8 @@ def test_block_3d_rendering():
     # Check non-zero pixels around (830, 430)
     center_roi = canvas[400:460, 800:860]
     nonzero_center = np.count_nonzero(center_roi)
-    print(f"[TEST] Block rendered at (800, 400) with {nonzero_center} non-zero pixels in target ROI.")
+    print(f"[TEST] Block rendered at (800, 400) with {nonzero_center} "
+          "non-zero pixels in target ROI.")
     assert nonzero_center > 100, f"Block pixels did not land in target ROI! Count: {nonzero_center}"
     print("[SUCCESS] 3D Block position accuracy verified.")
     return True

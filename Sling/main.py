@@ -386,7 +386,8 @@ def main():
             # L — ToF depth stabilizer (lid-shake calibration)
             if key in (ord('k'), ord('K')):
                 on = pipeline.toggle_smoothing()
-                print(f"[Stabilisation] Landmark smoothing: {'ON' if on else 'OFF (raw positions)'}")
+                print("[Stabilisation] Landmark smoothing: "
+                      f"{'ON' if on else 'OFF (raw positions)'}")
             if key in (ord('l'), ord('L')):
                 tof_stab_on = not tof_stab_on
                 if tof_stab_on:

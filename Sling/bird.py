@@ -123,8 +123,10 @@ class Bird:
         from ui import draw_ground_shadow  # local: ui imports bird, avoid circular import
         shadow_scale_x = LIGHTING_SETTINGS.get("SHADOW_SCALE_X", 1.25)
         shadow_scale_y = LIGHTING_SETTINGS.get("SHADOW_SCALE_Y", 0.35)
-        shadow_w = int(r * shadow_scale_x * (1.2 - 0.3 * max(0, min(1, (FLOOR_Y - self.y) / 160.0))))
-        shadow_h = int(r * shadow_scale_y * (1.0 - 0.4 * max(0, min(1, (FLOOR_Y - self.y) / 160.0))))
+        shadow_w = int(r * shadow_scale_x
+                       * (1.2 - 0.3 * max(0, min(1, (FLOOR_Y - self.y) / 160.0))))
+        shadow_h = int(r * shadow_scale_y
+                       * (1.0 - 0.4 * max(0, min(1, (FLOOR_Y - self.y) / 160.0))))
         draw_ground_shadow(frame, cx, int(self.y), shadow_w, shadow_h)
 
         # 1. Trail (behind bird)
@@ -132,7 +134,8 @@ class Bird:
             self._draw_trail(frame)
 
         # 3. Bird Base Body (2D Image or Fallback Silhouette)
-        img = _bird_images_side_2d.get(self.kind) if self.on_slingshot else _bird_images_2d.get(self.kind)
+        img = (_bird_images_side_2d.get(self.kind) if self.on_slingshot
+               else _bird_images_2d.get(self.kind))
         if img is None:
             img = _bird_images_2d.get(self.kind)
         if img is not None and img.shape[2] == 4:
@@ -164,8 +167,10 @@ class Bird:
         # A tucked wing adds depth without covering the face.
         wing_col = tuple(max(0, int(c * 0.68)) for c in col)
         wing = (cx - int(r * .47), cy + int(r * .18))
-        cv2.ellipse(frame, wing, (max(3, int(r*.35)), max(3, int(r*.22))), 28, 10, 190, wing_col, -1, cv2.LINE_AA)
-        cv2.ellipse(frame, wing, (max(3, int(r*.35)), max(3, int(r*.22))), 28, 10, 190, (20, 20, 20), 1, cv2.LINE_AA)
+        cv2.ellipse(frame, wing, (max(3, int(r*.35)), max(3, int(r*.22))),
+                    28, 10, 190, wing_col, -1, cv2.LINE_AA)
+        cv2.ellipse(frame, wing, (max(3, int(r*.35)), max(3, int(r*.22))),
+                    28, 10, 190, (20, 20, 20), 1, cv2.LINE_AA)
         # A restrained upper-left sheen makes the simple OpenCV artwork feel
         # round while preserving the crisp, game-like style.
         shine = tuple(min(255, int(c + (255-c)*.35)) for c in col)

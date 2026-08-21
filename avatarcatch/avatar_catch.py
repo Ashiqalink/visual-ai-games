@@ -5,7 +5,8 @@ Not a real game, a testbed: on launch the pipeline's face detector frames the
 player, who holds still for a short countdown, then one frame is grabbed from
 the live pipeline, matted to a transparent cutout, and that cutout becomes the
 paddle sprite for the rest of the session. Gameplay after that is driven by
-the hand, but the capture is not — see main() for why the face runs it. Everything downstream of capture (movement, collisions, score)
+the hand, but the capture is not — see main() for why the face runs it.
+Everything downstream of capture (movement, collisions, score)
 is placeholder catch-the-falling-shapes gameplay — the point being tested is
 the capture -> matte -> reuse pipeline, not this game design.
 
@@ -282,7 +283,8 @@ def main():
 
             if not consented:
                 draw_text(canvas, "Press SPACE to take your photo", W // 2 - 250, 40, 0.9)
-                draw_text(canvas, "Q to quit without one", W // 2 - 130, 70, 0.6, (180, 180, 180), 1)
+                draw_text(canvas, "Q to quit without one",
+                          W // 2 - 130, 70, 0.6, (180, 180, 180), 1)
             else:
                 draw_text(canvas, "Look at the camera and hold still",
                           W // 2 - 240, 40, 0.8)
@@ -290,13 +292,15 @@ def main():
             if hold_start is not None:
                 elapsed = time.time() - hold_start
                 remaining = max(0.0, HOLD_STILL_SECONDS - elapsed)
-                draw_text(canvas, f"Capturing in {remaining:0.1f}s", W // 2 - 120, H // 2, 1.2, (0, 255, 255))
+                draw_text(canvas, f"Capturing in {remaining:0.1f}s",
+                          W // 2 - 120, H // 2, 1.2, (0, 255, 255))
                 if elapsed >= HOLD_STILL_SECONDS and cam_frame is not None:
                     # matte_frame blocks, and on the very first run it blocks
                     # for seconds while 25 MB of MODNet weights download. Paint
                     # the reason before handing over the thread, or the window
                     # just freezes at "Capturing in 0.0s" with nothing to read.
-                    draw_text(canvas, "Cutting you out...", W // 2 - 130, H // 2 + 60, 0.9, (0, 255, 255))
+                    draw_text(canvas, "Cutting you out...",
+                              W // 2 - 130, H // 2 + 60, 0.9, (0, 255, 255))
                     draw_text(canvas, "first run also downloads 25 MB of matting weights",
                               W // 2 - 250, H // 2 + 90, 0.55, (150, 200, 255), 1)
                     cv2.imshow(TITLE, canvas)
@@ -308,7 +312,9 @@ def main():
             elif consented:
                 draw_text(canvas, "Waiting for a face...", W // 2 - 140, H // 2, 0.9, (0, 180, 255))
 
-            draw_text(canvas, "Your photo stays on this machine - never saved to disk, never uploaded",
+            draw_text(canvas,
+                      "Your photo stays on this machine - never saved to disk, "
+                      "never uploaded",
                       20, H - 20, 0.5, (150, 220, 150), 1)
 
         elif state == STATE_PLAYING:

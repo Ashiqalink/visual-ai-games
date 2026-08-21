@@ -337,7 +337,8 @@ def _titles() -> list[Title]:
         Title(
             id="punchy-report", name="Punchy run diagnostics", kind="tool",
             entry=g / "punchy" / "tracker_report.py",
-            blurb="Read back this machine's punchy run logs: trigger margin against the depth noise floor.",
+            blurb="Read back this machine's punchy run logs: trigger margin "
+                  "against the depth noise floor.",
             controls=["play punchy-report --runs - one line per run",
                       "play punchy-report --last 10 - the 10 most recent"],
             aliases=("pr", "punchy-stats"),

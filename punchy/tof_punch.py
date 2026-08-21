@@ -136,7 +136,8 @@ class Target:
         cv2.circle(frame, (self.x, self.y), current_r, (255, 255, 255), 2)
         
         # Timer ring
-        cv2.ellipse(frame, (self.x, self.y), (current_r + 20, current_r + 20), 0, 0, 360 * alpha, (0, 0, 255), 4)
+        cv2.ellipse(frame, (self.x, self.y), (current_r + 20, current_r + 20),
+                    0, 0, 360 * alpha, (0, 0, 255), 4)
 
 def draw_tracking_status(canvas, hand_visible, w=800):
     x0 = w - 150
@@ -320,14 +321,17 @@ def main():
         meter_y = H - 250
         meter_h = 200
         meter_w = 20
-        cv2.rectangle(frame, (meter_x, meter_y), (meter_x + meter_w, meter_y + meter_h), (100, 100, 100), 2)
+        cv2.rectangle(frame, (meter_x, meter_y),
+                      (meter_x + meter_w, meter_y + meter_h), (100, 100, 100), 2)
         
         fill_h = int(min(max((0.5 - current_z) / 0.3, 0), 1) * meter_h)
         if fill_h > 0:
-            cv2.rectangle(frame, (meter_x, meter_y + meter_h - fill_h), (meter_x + meter_w, meter_y + meter_h), (0, 200, 255), -1)
+            cv2.rectangle(frame, (meter_x, meter_y + meter_h - fill_h),
+                          (meter_x + meter_w, meter_y + meter_h), (0, 200, 255), -1)
             
         draw_text(frame, f"Z: {current_z:.2f}m", W - 120, H - 20, 0.7, (200, 255, 255))
-        draw_text(frame, "PUNCH FORWARD (decrease depth)!  |  H: how to play", 30, H - 30, 0.7, (200, 200, 200))
+        draw_text(frame, "PUNCH FORWARD (decrease depth)!  |  H: how to play",
+                  30, H - 30, 0.7, (200, 200, 200))
         
         if punch_cooldown > 0.0:
             draw_text(frame, "BAM!", W // 2 - 80, H // 2 - 120, 3.0, (0, 150, 255), 5)
@@ -340,11 +344,14 @@ def main():
         if stab_state == "sampling":
             # Draw prominent warning in-game since camera frame is hidden
             frame = cv2.addWeighted(frame, 0.4, stab_overlay, 0.6, 0)
-            draw_text(frame, "!! LID-SHAKE STABILIZATION !!", W//2 - 250, H//2 - 50, 1.2, (0, 140, 255), 3)
-            draw_text(frame, "Please do not move or change position", W//2 - 200, H//2 + 10, 0.7, (255, 255, 255), 2)
+            draw_text(frame, "!! LID-SHAKE STABILIZATION !!",
+                      W//2 - 250, H//2 - 50, 1.2, (0, 140, 255), 3)
+            draw_text(frame, "Please do not move or change position",
+                      W//2 - 200, H//2 + 10, 0.7, (255, 255, 255), 2)
             
             prog = latest_data.get("stabilizer_progress", 0.0) if latest_data else 0.0
-            draw_text(frame, f"Calibrating... {prog*100:.0f}%", W//2 - 120, H//2 + 50, 0.7, (0, 220, 200), 2)
+            draw_text(frame, f"Calibrating... {prog*100:.0f}%",
+                      W//2 - 120, H//2 + 50, 0.7, (0, 220, 200), 2)
 
             badge_color = (0, 200, 255)   # amber-orange
             badge_text  = "SAMPLING..."

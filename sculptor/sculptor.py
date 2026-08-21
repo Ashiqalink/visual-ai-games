@@ -226,7 +226,8 @@ class Sculptor(LabGame):
             if len(samples) >= 40:
                 q = len(samples) // 4
                 entry["drift_pct"] = round(
-                    100.0 * (statistics.fmean(samples[-q:]) / statistics.fmean(samples[:q]) - 1.0), 1)
+                    100.0 * (statistics.fmean(samples[-q:])
+                             / statistics.fmean(samples[:q]) - 1.0), 1)
             out["per_mesh"][name] = entry
         return out
 

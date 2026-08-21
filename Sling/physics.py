@@ -234,7 +234,8 @@ def resolve_block_collision(b1, b2):
     if normal_speed < 0.0:
         mat1 = BLOCK_MATERIALS.get(getattr(b1, "material", "wood"), BLOCK_MATERIALS["wood"])
         mat2 = BLOCK_MATERIALS.get(getattr(b2, "material", "wood"), BLOCK_MATERIALS["wood"])
-        restitution = min(0.45, (mat1.get("restitution", 0.25) + mat2.get("restitution", 0.25)) / 2.0)
+        restitution = min(0.45, (mat1.get("restitution", 0.25)
+                                 + mat2.get("restitution", 0.25)) / 2.0)
         impulse = -(1.0 + restitution) * normal_speed / inv_total
         ix, iy = impulse * nx, impulse * ny
         if not static1:

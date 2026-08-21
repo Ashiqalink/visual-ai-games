@@ -38,8 +38,10 @@ class FakeClock:
 clock = FakeClock()
 tracker.time.perf_counter = clock
 
-EASY = {"name": "EASY", "speed": 165.0, "gap": 200, "spacing": 400, "follow_tau": 0.072, "ramp_pipes": 28}
-HARD = {"name": "HARD", "speed": 310.0, "gap": 125, "spacing": 260, "follow_tau": 0.039, "ramp_pipes": 14}
+EASY = {"name": "EASY", "speed": 165.0, "gap": 200, "spacing": 400,
+        "follow_tau": 0.072, "ramp_pipes": 28}
+HARD = {"name": "HARD", "speed": 310.0, "gap": 125, "spacing": 260,
+        "follow_tau": 0.039, "ramp_pipes": 14}
 
 
 def finger(i, rnd):

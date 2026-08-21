@@ -1,5 +1,6 @@
 """
-test_tflite.py — Verifies TensorFlow Lite (TFLite) delegate execution & MediaPipe Hand Tracking performance.
+test_tflite.py — verifies TFLite delegate execution and MediaPipe hand
+tracking performance.
 """
 
 import time

@@ -154,7 +154,7 @@ def _draw_star(frame: np.ndarray, cx: int, cy: int, r: int,
 
 def draw_rect_alpha(frame: np.ndarray, x1: int, y1: int, x2: int, y2: int,
                     color: tuple[int, int, int], alpha: float):
-    """Draws a semi-transparent filled rectangle using ROI slicing to avoid full-frame hardcopies."""
+    """Semi-transparent filled rectangle via ROI slicing (no full-frame copy)."""
     h, w = frame.shape[:2]
     x1, y1 = max(0, x1), max(0, y1)
     x2, y2 = min(w, x2), min(h, y2)
@@ -233,7 +233,8 @@ def draw_ground(frame: np.ndarray, floor_y: int = 660):
     np.copyto(frame, _bg_cache)
 
 
-def draw_carousel(frame: np.ndarray, bird_types: list, selected_idx: int, rot_angle_3d: float = 0.0):
+def draw_carousel(frame: np.ndarray, bird_types: list, selected_idx: int,
+                  rot_angle_3d: float = 0.0):
     """
     Draw the bird selection carousel at the top centre with 3D visual_ai element showcase.
 
@@ -295,7 +296,7 @@ def draw_trajectory(frame: np.ndarray,
                     vx: float, vy: float,
                     gravity: float = GRAVITY, air_drag: float = AIR_DRAG, n_dots: int = 40,
                     mass: float = 1.0):
-    """Draw dotted parabolic trajectory preview from launch position using visual_ai trajectory prediction."""
+    """Dotted trajectory preview from launch, via the engine's predictor."""
     # Step duration (dt=1.0 per frame step to match game engine step)
     trajectory_points = predict_projectile_trajectory(
         start_pos=(start_x, start_y),
@@ -450,7 +451,8 @@ def draw_hud(
     box_w, box_h = 250, 78
     box_x, box_y = w - box_w - 12, 187
     draw_rect_alpha(frame, box_x, box_y, box_x + box_w, box_y + box_h, (15, 18, 28), 0.65)
-    cv2.rectangle(frame, (box_x, box_y), (box_x + box_w, box_y + box_h), (60, 90, 130), 1, cv2.LINE_AA)
+    cv2.rectangle(frame, (box_x, box_y), (box_x + box_w, box_y + box_h),
+                  (60, 90, 130), 1, cv2.LINE_AA)
 
     # Tracking lamp + current sign on one row. Losing the hand is the single
     # most confusing failure, so it keeps the brightest slot.
@@ -545,7 +547,8 @@ def draw_instructions_card(frame: np.ndarray):
               INSTRUCTIONS_CONTROLS, INSTRUCTIONS_KEYS)
 
 
-def draw_done_overlay(frame: np.ndarray, score: int = 0, won: bool = False, stars: int = 0, bonus: int = 0, rot_angle_3d: float = 0.0):
+def draw_done_overlay(frame: np.ndarray, score: int = 0, won: bool = False,
+                      stars: int = 0, bonus: int = 0, rot_angle_3d: float = 0.0):
     """Full-screen semi-transparent 'Done' screen with final score, stars, and 3D victory trophy."""
     h, w = frame.shape[:2]
     draw_rect_alpha(frame, 0, 0, w, h, (10, 10, 10), 0.75)
@@ -560,7 +563,8 @@ def draw_done_overlay(frame: np.ndarray, score: int = 0, won: bool = False, star
         mat_gold = Material(base_color=(1.0, 0.84, 0.0, 1.0), opacity=0.95)
         rel_x = 0.0
         rel_y = (h / 2.0) - (h / 2.0 - 140)
-        t_trophy = Transform3D(x=rel_x, y=rel_y, z=0.0, rx=5.0, ry=rot_angle_3d, rz=0.0, sx=1.2, sy=1.2, sz=1.2)
+        t_trophy = Transform3D(x=rel_x, y=rel_y, z=0.0, rx=5.0, ry=rot_angle_3d,
+                               rz=0.0, sx=1.2, sy=1.2, sz=1.2)
         _ui_renderer3d.render_mesh(frame, _trophy_3d_mesh, t_trophy, material=mat_gold)
 
         _text(frame, "LEVEL CLEARED!", (w//2 - 200, h//2 - 90),
@@ -574,7 +578,8 @@ def draw_done_overlay(frame: np.ndarray, score: int = 0, won: bool = False, star
                        star_col, filled=(i < max(0, min(3, stars))))
         
         if bonus > 0:
-            _text(frame, f"Unused Birds Bonus: +{bonus}", (w//2 - 160, h//2 + 40), scale=0.8, col=(180, 220, 255), thickness=2)
+            _text(frame, f"Unused Birds Bonus: +{bonus}", (w//2 - 160, h//2 + 40),
+                  scale=0.8, col=(180, 220, 255), thickness=2)
     else:
         _text(frame, "ALL BIRDS USED!", (w//2 - 200, h//2 - 50),
               scale=1.8, col=(0, 100, 255), thickness=3)
