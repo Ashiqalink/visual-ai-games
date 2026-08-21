@@ -552,7 +552,7 @@ def draw_done_overlay(frame: np.ndarray, score: int = 0, won: bool = False,
     """Full-screen semi-transparent 'Done' screen with final score, stars, and 3D victory trophy."""
     h, w = frame.shape[:2]
     draw_rect_alpha(frame, 0, 0, w, h, (10, 10, 10), 0.75)
-    
+
     if won:
         # Render 3D Gold Trophy Pyramid
         _ui_cam3d.screen_width = float(w)
@@ -569,21 +569,21 @@ def draw_done_overlay(frame: np.ndarray, score: int = 0, won: bool = False,
 
         _text(frame, "LEVEL CLEARED!", (w//2 - 200, h//2 - 90),
               scale=1.8, col=(0, 255, 100), thickness=3)
-        
+
         # Draw Stars — filled for earned, outlined for not.
         star_col = (0, 215, 255)
         star_r, star_gap = 26, 74
         for i in range(3):
             _draw_star(frame, w//2 + (i - 1) * star_gap, h//2 - 18, star_r,
                        star_col, filled=(i < max(0, min(3, stars))))
-        
+
         if bonus > 0:
             _text(frame, f"Unused Birds Bonus: +{bonus}", (w//2 - 160, h//2 + 40),
                   scale=0.8, col=(180, 220, 255), thickness=2)
     else:
         _text(frame, "ALL BIRDS USED!", (w//2 - 200, h//2 - 50),
               scale=1.8, col=(0, 100, 255), thickness=3)
-        
+
     _text(frame, f"Final Score: {score}", (w//2 - 140, h//2 + 90),
           scale=1.2, col=(0, 255, 200), thickness=2)
     _text(frame, "Press  R  to restart  |  1/2/3  to change level",

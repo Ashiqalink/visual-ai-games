@@ -108,7 +108,7 @@ def _legacy_resolve_block_collision(b1, b2):
     # Mass from area × density
     m1 = b1.rect[2] * b1.rect[3] * getattr(b1, "density", 1.0)
     m2 = b2.rect[2] * b2.rect[3] * getattr(b2, "density", 1.0)
-    
+
     if is_b1_static:
         r1, r2 = 0.0, 1.0
         m1 = 1e9
@@ -126,11 +126,11 @@ def _legacy_resolve_block_collision(b1, b2):
 
     mat1 = BLOCK_MATERIALS.get(getattr(b1, "material", "wood"), BLOCK_MATERIALS["wood"])
     mat2 = BLOCK_MATERIALS.get(getattr(b2, "material", "wood"), BLOCK_MATERIALS["wood"])
-    
+
     # Average material properties for collision
     coll_restitution = (mat1.get("restitution", 0.35) + mat2.get("restitution", 0.35)) / 2.0
     coll_friction = (mat1.get("friction", 0.5) + mat2.get("friction", 0.5)) / 2.0
-    
+
     if overlap_x < overlap_y:
         # ── Resolve along X ──────────────────────────────────────────
         if b1.cx < b2.cx:

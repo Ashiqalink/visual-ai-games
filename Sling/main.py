@@ -149,14 +149,14 @@ def _draw_system_metrics(canvas: np.ndarray):
     """Draw live CPU and GPU usage metrics on HUD (smoothed & throttled updates)."""
     global _last_metrics_time, _cached_cpu, _cached_gpu_str
     now = time.time()
-    
+
     # Update reading every 500ms so numbers don't flicker uncontrollably
     if now - _last_metrics_time > 0.5:
         _last_metrics_time = now
         raw_cpu = psutil.cpu_percent(interval=None)
         # Exponential Moving Average smoothing
         _cached_cpu = 0.7 * _cached_cpu + 0.3 * raw_cpu if _cached_cpu > 0 else raw_cpu
-        
+
         if GPUTIL_AVAILABLE:
             try:
                 gpus = GPUtil.getGPUs()
@@ -165,7 +165,7 @@ def _draw_system_metrics(canvas: np.ndarray):
                     _cached_gpu_str = f"{gpu_val:.1f}%"
             except Exception:
                 _cached_gpu_str = "N/A"
-            
+
     # Small single line under the score card — the boxed cyan banner this used
     # to be sat directly on top of the score.
     text = f"CPU {_cached_cpu:.0f}%  GPU {_cached_gpu_str}"

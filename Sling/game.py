@@ -137,7 +137,7 @@ def _level_easy() -> list[Block]:
 
     # Single block on top
     blocks.append(Block(950, FLOOR_Y - BH * 2 - TH, BW, BH, "wood"))
-    
+
     # Target
     blocks.append(Target(950, FLOOR_Y - BH * 2 - TH - 30, radius=20))
 
@@ -441,7 +441,7 @@ class Game:
 
         if new_blocks:
             self.blocks.extend(new_blocks)
-            
+
         # ── Enforce Debris Cap ────────────────────────────────────────────
         debris_blocks = [b for b in self.blocks if getattr(b, "is_debris", False) and b.active]
         if len(debris_blocks) > MAX_DEBRIS:
@@ -477,7 +477,7 @@ class Game:
                         and not self.current_bird.launched):
                     self._final_bonus += PTS_UNUSED_BIRD
                 self.score += self._final_bonus
-                
+
                 if self.score >= STAR_3_SCORE:
                     self._final_stars = 3
                 elif self.score >= STAR_2_SCORE:
@@ -486,7 +486,7 @@ class Game:
                     self._final_stars = 1
                 else:
                     self._final_stars = 0
-                    
+
                 self.state = "WIN"
 
     def draw(self, frame: np.ndarray):

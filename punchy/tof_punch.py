@@ -132,9 +132,9 @@ class Target:
             # Glowing cyan/blue effect in BGR
             color = (int(255 * alpha * (4-i)/3), int(150 * alpha * (4-i)/3), 0)
             cv2.circle(frame, (self.x, self.y), r, color, -1)
-            
+
         cv2.circle(frame, (self.x, self.y), current_r, (255, 255, 255), 2)
-        
+
         # Timer ring
         cv2.ellipse(frame, (self.x, self.y), (current_r + 20, current_r + 20),
                     0, 0, 360 * alpha, (0, 0, 255), 4)
@@ -152,7 +152,7 @@ def draw_tracking_status(canvas, hand_visible, w=800):
 def main():
     print("Starting ToF Z-Punch Game...")
     ai_queue = queue.Queue(maxsize=1)
-    
+
     pipeline = VisionPipeline(
         result_queue=ai_queue,
         width=W,
@@ -172,14 +172,14 @@ def main():
     misses = 0
     target = Target()
     particles = []
-    
+
     # Z velocity tracking
     z_history = []
     lost_frames = 0
-    
+
     punch_cooldown = 0.0        # s of hit lockout left
     bg_flash = 0.0              # 0..1 strength of the punch flash
-    
+
     hand_visible = False
 
     # Pre-calculate gradient background
@@ -266,17 +266,17 @@ def main():
                 punch_baseline = z_baseline
                 punch_cooldown = PUNCH_COOLDOWN   # prevent multi-hits
                 z_history.clear()
-        
+
         if punch_cooldown > 0.0:
             punch_cooldown = max(0.0, punch_cooldown - dt)
 
         frame = bg_base.copy()
-        
+
         # Background flash on punch
         if bg_flash > 0.0:
             frame = cv2.addWeighted(frame, 1.0, flash_overlay, bg_flash * 0.8, 0)
             bg_flash = max(0.0, bg_flash - dt / FLASH_DECAY)
-            
+
         if punch_detected:
             bg_flash = 1.0
             if target is not None:
@@ -313,9 +313,9 @@ def main():
         # UI
         draw_text(frame, f"Score: {score}", 30, 50, 1.5, (50, 255, 50), 3)
         draw_text(frame, f"Misses: {misses}", 30, 100, 1.2, (50, 50, 255), 2)
-        
+
         current_z = z_history[-1] if z_history else 0.45
-        
+
         # Draw a stylish depth meter
         meter_x = W - 60
         meter_y = H - 250
@@ -323,16 +323,16 @@ def main():
         meter_w = 20
         cv2.rectangle(frame, (meter_x, meter_y),
                       (meter_x + meter_w, meter_y + meter_h), (100, 100, 100), 2)
-        
+
         fill_h = int(min(max((0.5 - current_z) / 0.3, 0), 1) * meter_h)
         if fill_h > 0:
             cv2.rectangle(frame, (meter_x, meter_y + meter_h - fill_h),
                           (meter_x + meter_w, meter_y + meter_h), (0, 200, 255), -1)
-            
+
         draw_text(frame, f"Z: {current_z:.2f}m", W - 120, H - 20, 0.7, (200, 255, 255))
         draw_text(frame, "PUNCH FORWARD (decrease depth)!  |  H: how to play",
                   30, H - 30, 0.7, (200, 200, 200))
-        
+
         if punch_cooldown > 0.0:
             draw_text(frame, "BAM!", W // 2 - 80, H // 2 - 120, 3.0, (0, 150, 255), 5)
 
@@ -340,7 +340,7 @@ def main():
 
         # ── Stabilizer HUD badge ──────────────────────────────────────────────
         stab_noise = latest_data.get("stabilizer_noise_amp", 0.0) if latest_data else 0.0
-        
+
         if stab_state == "sampling":
             # Draw prominent warning in-game since camera frame is hidden
             frame = cv2.addWeighted(frame, 0.4, stab_overlay, 0.6, 0)
@@ -348,7 +348,7 @@ def main():
                       W//2 - 250, H//2 - 50, 1.2, (0, 140, 255), 3)
             draw_text(frame, "Please do not move or change position",
                       W//2 - 200, H//2 + 10, 0.7, (255, 255, 255), 2)
-            
+
             prog = latest_data.get("stabilizer_progress", 0.0) if latest_data else 0.0
             draw_text(frame, f"Calibrating... {prog*100:.0f}%",
                       W//2 - 120, H//2 + 50, 0.7, (0, 220, 200), 2)

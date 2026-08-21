@@ -82,7 +82,7 @@ def test_game_3d_integration():
 def test_block_3d_rendering():
     print("[TEST] Testing 3D Block rendering position accuracy...")
     from block import Block
-    
+
     blk = Block(x=800, y=400, w=60, h=60, material="wood")
     canvas = np.zeros((720, 1280, 3), dtype=np.uint8)
     blk.draw(canvas, render_3d=True)

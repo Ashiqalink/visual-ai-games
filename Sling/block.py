@@ -76,7 +76,7 @@ class Block:
         self.active: bool = True
         self.on_ground: bool = False
         self.is_static: bool = False
-        
+
         # Debris lifespan (ported from visual_ai)
         self.is_debris: bool = False
         self.lifespan: int = -1
@@ -266,7 +266,7 @@ class Block:
             mat_info = MATERIALS.get(self.material, MATERIALS["wood"])
             bgr_col = mat_info["color"]
             rgb_float = (bgr_col[2] / 255.0, bgr_col[1] / 255.0, bgr_col[0] / 255.0, 1.0)
-            
+
             vmat = mat_info.get("material")
             opacity = vmat.opacity if vmat else 1.0
             block_mat_3d = Material(base_color=rgb_float, opacity=opacity)
@@ -508,7 +508,7 @@ class Target(Block):
     def __init__(self, x: int, y: int, radius: int = 20):
         # We store radius in width/height so AABB collision works reasonably well
         super().__init__(x, y, w=radius*2, h=radius*2, material=TARGET)
-        
+
         # Override health for the target specifically
         from config import TARGET_HEALTH
         self.health = TARGET_HEALTH
