@@ -1,3 +1,16 @@
+"""
+flappy - flap by raising your index finger. Pure RGB tracking, no depth.
+
+The fingertip's screen-space Y is the whole control: the bird eases toward it
+with a difficulty-dependent time constant, so the game doubles as a test bed
+for how much smoothing lag a player can feel. Difficulty, pacing and the run
+tracker are all wall-clock; the render loop is paced by gameloop.frame_pacer,
+and the RENDER_HZ comment below records why a naive cv2.waitKey(16) ran this
+game at half speed for weeks.
+
+(The docs' name for this entry, tof_flappy.py, is stale - this file has never
+read depth.)
+"""
 import math
 import os
 import queue
@@ -26,6 +39,7 @@ from instructions import draw_card
 
 W, H = 800, 600
 
+WINDOW = "Flappy"      # the OpenCV window name; TITLE below is the help card
 TITLE = "Flappy — fly with your fingertip"
 GOAL = ("Fly the bird through the gaps in the pipes. Hitting a pipe, the "
         "ceiling or the floor ends the run. The gaps start near the middle "
@@ -306,8 +320,8 @@ def main():
     pipeline.disable_camera = False
     pipeline.start()
 
-    cv2.namedWindow("Flappy", cv2.WINDOW_NORMAL)
-    cv2.resizeWindow("Flappy", W, H)
+    cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(WINDOW, W, H)
 
     bird_y = H // 2
 
@@ -430,7 +444,7 @@ def main():
         if showing_help:
             draw_card(frame, TITLE, GOAL, CONTROLS, KEYS)
 
-        cv2.imshow("Flappy", frame)
+        cv2.imshow(WINDOW, frame)
 
         key = paced_key()
         if key in (27, ord('q')):

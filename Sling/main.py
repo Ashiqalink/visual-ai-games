@@ -42,6 +42,9 @@ from engine_bootstrap import ensure_engine
 
 ensure_engine()
 
+#: The one OpenCV window every imshow targets.
+WINDOW = "Sling"
+
 # config.py depends on nothing but os/sys, so the window geometry is available
 # before the expensive imports below — see _splash().
 from config import (
@@ -73,9 +76,9 @@ def _splash(message: str):
                 cv2.FONT_HERSHEY_SIMPLEX, 2.2, (60, 200, 255), 4, cv2.LINE_AA)
     cv2.putText(canvas, message, (FRAME_W // 2 - 110, FRAME_H // 2 + 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (140, 190, 225), 1, cv2.LINE_AA)
-    cv2.namedWindow("Sling", cv2.WINDOW_NORMAL)
-    cv2.resizeWindow("Sling", FRAME_W, FRAME_H)
-    cv2.imshow("Sling", canvas)
+    cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(WINDOW, FRAME_W, FRAME_H)
+    cv2.imshow(WINDOW, canvas)
     cv2.waitKey(1)
 
 
@@ -231,8 +234,8 @@ def main():
 
     game    = Game(frame_w=FRAME_W, frame_h=FRAME_H)
 
-    cv2.namedWindow("Sling", cv2.WINDOW_NORMAL)
-    cv2.resizeWindow("Sling", FRAME_W, FRAME_H)
+    cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(WINDOW, FRAME_W, FRAME_H)
 
     # ── FPS & Timing setup ────────────────────────────────────────────────
     prev_time = time.time()
@@ -334,7 +337,7 @@ def main():
             ui.draw_instructions_card(canvas)
             cv2.putText(canvas, "Starting camera...", (FRAME_W // 2 - 90, FRAME_H - 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (120, 180, 220), 1, cv2.LINE_AA)
-            cv2.imshow("Sling", canvas)
+            cv2.imshow(WINDOW, canvas)
             if _paced_key() in (ord('q'), ord('Q'), 27):
                 pipeline.stop()
                 cv2.destroyAllWindows()
@@ -475,7 +478,7 @@ def main():
         if showing_help:
             ui.draw_instructions_card(canvas)
 
-        cv2.imshow("Sling", canvas)
+        cv2.imshow(WINDOW, canvas)
 
         if key in (ord('q'), ord('Q'), 27):
             break

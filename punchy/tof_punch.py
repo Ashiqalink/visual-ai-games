@@ -1,3 +1,13 @@
+"""
+punchy - smash targets by driving your fist at the camera.
+
+Depth is the whole control: a punch is a sudden drop in the hand's depth
+against its recent baseline, so where the hand sits on screen makes no
+difference. Runs against simulated depth when no sensor is present. Timers
+are wall-clock durations (converted from the old iteration counts at the
+nominal 16 ms frame - see the pacing note below), and the render loop is
+paced by gameloop.frame_pacer.
+"""
 import math
 import os
 import queue
@@ -54,6 +64,7 @@ TARGET_LIFETIME = 1.6      # s, was 100 frames
 PUNCH_COOLDOWN = 0.24      # s, was 15 frames
 FLASH_DECAY = 0.128        # s for the punch flash to fade out, was 8 frames
 
+WINDOW = "Punchy"      # the OpenCV window name; "ToF" dropped with the depth rename
 TITLE = "ToF Punch — hit it with depth"
 GOAL = ("Punch toward the camera to smash the target before the red ring "
         "around it runs out.")
@@ -153,8 +164,8 @@ def main():
     pipeline.disable_camera = False
     pipeline.start()
 
-    cv2.namedWindow("ToF Punch", cv2.WINDOW_NORMAL)
-    cv2.resizeWindow("ToF Punch", W, H)
+    cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(WINDOW, W, H)
 
     score = 0
     misses = 0
@@ -351,7 +362,7 @@ def main():
         if showing_help:
             draw_card(frame, TITLE, GOAL, CONTROLS, KEYS)
 
-        cv2.imshow("ToF Punch", frame)
+        cv2.imshow(WINDOW, frame)
 
         key = paced_key()
         if key in (27, ord('q')):
