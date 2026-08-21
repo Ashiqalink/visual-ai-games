@@ -20,44 +20,74 @@ Improvements over original:
   - Slingshot snap-back animation on release
 """
 
-import cv2
 import math
 import random
 import time
+
+import cv2
 import numpy as np
-from bird import Bird
-from config import (BIRD_ORDER, BIRD_COLOURS as COLOURS, BIRD_DAMAGE,
-                    PUNCH_THROUGH_RETAIN, BLOCK_RESIST_MAX)
-from block import Block, Target
-from slingshot import SLING_X, SLING_Y, FORK_LEFT, FORK_RIGHT
-from physics import (
-    POWER_FACTOR, MAX_PULL, FLOOR_Y, BIRD_LINGER,
-    bird_hits_block, distance, magnitude,
-    resolve_block_collision, resolve_bird_block_collision,
-)
 import slingshot
 import ui
-from tracker import NullTracker
+from bird import Bird
+from block import Block, Target
 from config import (
-    PTS_BLOCK, PTS_DEBRIS, PTS_TARGET,
-    SCORE_POPUP_LIFETIME, SCORE_POPUP_RISE,
-    ARMED_GRACE_FRAMES, MIN_FIRE_PULL, EDGE_MARGIN,
-    AIM_PULL_GAIN, INPUT_MOVEMENT_MAGNIFICATION, AIM_EMA_HOLD, AIM_EMA_MIN, AIM_EMA_MAX,
-    AIM_EMA_JITTER_LO, AIM_EMA_JITTER_HI,
-    SEL_DEBOUNCE_FRAMES, Z_PUSH_DETECT_THRESH,
-    DEBRIS_LIFESPAN, DEBRIS_VEL_SPREAD, DEBRIS_VY_KICK,
-    DEBRIS_CARRY_FACTOR, DEBRIS_HEALTH, MAX_DEBRIS,
-
-    PLATFORM_W, PLATFORM_H, PLATFORM_HEALTH,
+    AIM_EMA_JITTER_HI,
+    AIM_EMA_JITTER_LO,
+    AIM_EMA_MAX,
+    AIM_EMA_MIN,
+    AIM_PULL_GAIN,
+    BH,
+    BIRD_DAMAGE,
+    BIRD_LINGER,
+    BIRD_ORDER,
     BIRD_STOP_SPEED,
-    BW, BH, TH, LEVEL_X_OFF, LEVEL_NAMES,
-    CAROUSEL_SPACING, CAROUSEL_SELECTION_MAX_Y,
-    GRAB_RELEASE_FRAMES, LOST_HAND_FIRE_FRAMES,
-    GRIP_RELEASE_OPENNESS, GRIP_RELEASE_FRAMES,
-    GRIP_RELEASE_GATE, GRIP_RELEASE_RATE,
-    READY_SETTLE_FRAMES, READY_SETTLE_RADIUS,
-    READY_MAX_FRAMES, READY_LOST_CANCEL_FRAMES,
+    BLOCK_RESIST_MAX,
+    BW,
+    CAROUSEL_SELECTION_MAX_Y,
+    CAROUSEL_SPACING,
+    DEBRIS_CARRY_FACTOR,
+    DEBRIS_HEALTH,
+    DEBRIS_LIFESPAN,
+    DEBRIS_VEL_SPREAD,
+    DEBRIS_VY_KICK,
+    EDGE_MARGIN,
+    FLOOR_Y,
+    GRAB_RELEASE_FRAMES,
+    GRIP_RELEASE_FRAMES,
+    GRIP_RELEASE_GATE,
+    GRIP_RELEASE_OPENNESS,
+    GRIP_RELEASE_RATE,
+    LEVEL_X_OFF,
+    LOST_HAND_FIRE_FRAMES,
+    MAX_DEBRIS,
+    MAX_PULL,
+    MIN_FIRE_PULL,
+    PLATFORM_H,
+    PLATFORM_HEALTH,
+    PLATFORM_W,
+    POWER_FACTOR,
+    PTS_BLOCK,
+    PTS_DEBRIS,
+    PTS_TARGET,
+    PUNCH_THROUGH_RETAIN,
+    READY_LOST_CANCEL_FRAMES,
+    READY_MAX_FRAMES,
+    READY_SETTLE_FRAMES,
+    READY_SETTLE_RADIUS,
+    SCORE_POPUP_LIFETIME,
+    SCORE_POPUP_RISE,
+    SEL_DEBOUNCE_FRAMES,
+    TH,
 )
+from physics import (
+    bird_hits_block,
+    distance,
+    magnitude,
+    resolve_bird_block_collision,
+    resolve_block_collision,
+)
+from slingshot import SLING_X, SLING_Y
+from tracker import NullTracker
 
 # ── Score constants ────────────────────────────────────────────────────────────────
 # (imported from config above)
@@ -509,9 +539,11 @@ class Game:
             # Depth-layered: back elastic → bird → front elastic + structure
             slingshot.draw_back(frame, bird_pos=bp, pull_dist=pull_d)
             if shake_x or shake_y:
-                bird.x += shake_x; bird.y += shake_y
+                bird.x += shake_x
+                bird.y += shake_y
                 bird.draw(frame)
-                bird.x -= shake_x; bird.y -= shake_y
+                bird.x -= shake_x
+                bird.y -= shake_y
             else:
                 bird.draw(frame)
             slingshot.draw_front(frame, bird_pos=bp, pull_dist=pull_d)
@@ -525,9 +557,11 @@ class Game:
             slingshot.draw(frame, bird_pos=None)
             if self.current_bird and self.current_bird.active:
                 if shake_x or shake_y:
-                    self.current_bird.x += shake_x; self.current_bird.y += shake_y
+                    self.current_bird.x += shake_x
+                    self.current_bird.y += shake_y
                     self.current_bird.draw(frame)
-                    self.current_bird.x -= shake_x; self.current_bird.y -= shake_y
+                    self.current_bird.x -= shake_x
+                    self.current_bird.y -= shake_y
                 else:
                     self.current_bird.draw(frame)
 

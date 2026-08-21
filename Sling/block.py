@@ -3,28 +3,42 @@ block.py — Block with material system (wood/stone/ice), health, gravity,
            floor bounce, angular rotation, and progressive fracture rendering.
 """
 
-import sys
+import math
 import os
+import sys
+
 import cv2
 import numpy as np
-import math
-import random
 
 # Ensure visual ai game engine imports are accessible
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine', 'src'))
-from visual_ai import (
-    Renderer3D, Mesh3D, Transform3D, Camera3D, Material,
-    render_creature, rgb_to_bgr, load_image,
-)
-from visual_ai.imaging import blit_sprite, blit_ellipse_alpha
-
-from physics import GRAVITY, FLOOR_Y, RESTITUTION, DAMAGE_FACTOR, BLOCK_HEALTH
-from ui import draw_ground_shadow
 from config import (
-    BLOCK_VX_TRANSFER, BLOCK_VY_TRANSFER, DEBRIS_FADE_FRAMES,
-    BLOCK_MATERIALS as MATERIALS, LIGHTING_SETTINGS,
-    TARGET, TARGET_SPEC,
+    BLOCK_MATERIALS as MATERIALS,
 )
+from config import (
+    BLOCK_VX_TRANSFER,
+    BLOCK_VY_TRANSFER,
+    DAMAGE_FACTOR,
+    DEBRIS_FADE_FRAMES,
+    FLOOR_Y,
+    GRAVITY,
+    LIGHTING_SETTINGS,
+    RESTITUTION,
+    TARGET,
+    TARGET_SPEC,
+)
+from ui import draw_ground_shadow
+from visual_ai import (
+    Camera3D,
+    Material,
+    Mesh3D,
+    Renderer3D,
+    Transform3D,
+    load_image,
+    render_creature,
+    rgb_to_bgr,
+)
+from visual_ai.imaging import blit_sprite
 
 # Global 3D Renderer instance for Block 3D depth rendering
 _block_cam3d = Camera3D(fov=60.0, position=(0.0, 0.0, 500.0), screen_width=1280.0, screen_height=720.0)
@@ -168,7 +182,6 @@ class Block:
         seed = int(self.rect[0] * 13 + self.rect[1] * 37) % 4
 
         tl = np.array([-half_w, -half_h])
-        tr = np.array([half_w, -half_h])
         br = np.array([half_w, half_h])
         bl = np.array([-half_w, half_h])
 

@@ -39,17 +39,21 @@ if BASE_DIR not in sys.path:
 sys.path.insert(0, os.path.join(BASE_DIR, '..'))
 
 from engine_bootstrap import ensure_engine
+
 ensure_engine()
 
 # config.py depends on nothing but os/sys, so the window geometry is available
 # before the expensive imports below — see _splash().
 from config import (
-    FRAME_W, FRAME_H, BG_COLOR,
-    CAM_W, CAM_H, CAM_MARGIN, CAM_BORDER, CAM_BORDER_COLOR,
+    BG_COLOR,
+    CAM_BORDER,
+    CAM_BORDER_COLOR,
+    CAM_H,
+    CAM_MARGIN,
+    CAM_W,
+    FRAME_H,
+    FRAME_W,
     SMOOTH_ALPHA,
-    # CURSOR_PINCH_COL / CURSOR_FIRE_COL are no longer drawn on the canvas —
-    # ui.py uses them for the pinch and fire rows of the HUD panel instead.
-    CURSOR_INDEX_COL,
 )
 
 
@@ -78,31 +82,43 @@ def _splash(message: str):
 _splash("Loading vision engine...")
 
 import psutil
+
 try:
     import GPUtil
     GPUTIL_AVAILABLE = True
 except ImportError:
     GPUTIL_AVAILABLE = False
 
-from visual_ai import VisionPipeline, CPP_ENGINE_AVAILABLE
+from visual_ai import CPP_ENGINE_AVAILABLE, VisionPipeline
 
 _splash("Preparing game...")
 
-from game import Game
-from slingshot import SLING_X, SLING_Y
-from tracker import RunTracker, tracking_enabled
 import ui
 
 # Only the tuning a run's numbers have to be read against — a log that does not
 # say which settings produced it cannot be compared with the next one.
 from config import (
-    AIM_PULL_GAIN as _CFG_GAIN, MIN_FIRE_PULL as _CFG_MIN_PULL,
-    GRIP_RELEASE_OPENNESS as _CFG_GRIP_OPEN,
+    AIM_PULL_GAIN as _CFG_GAIN,
+)
+from config import (
     GRIP_RELEASE_FRAMES as _CFG_GRIP_FRAMES,
+)
+from config import (
+    GRIP_RELEASE_OPENNESS as _CFG_GRIP_OPEN,
+)
+from config import MAX_PULL as _CFG_MAX_PULL
+from config import (
+    MIN_FIRE_PULL as _CFG_MIN_PULL,
+)
+from config import (
     READY_SETTLE_FRAMES as _CFG_SETTLE_FRAMES,
+)
+from config import (
     READY_SETTLE_RADIUS as _CFG_SETTLE_RADIUS,
 )
-from physics import MAX_PULL as _CFG_MAX_PULL
+from game import Game
+from slingshot import SLING_X, SLING_Y
+from tracker import RunTracker, tracking_enabled
 
 
 def _tracker_settings() -> dict:

@@ -1,23 +1,28 @@
 """
 physics.py — Physics constants, gravity, AABB collision, impulse helpers.
 
-All tunable values are imported from config.py.
+All tunable values are imported from config.py - and only the ones the
+collision code here actually reads. This module used to re-export twenty
+config constants it never used, so `from physics import GRAVITY` worked and a
+reader chasing a magic number landed in the wrong file; consumers now import
+gameplay constants from config directly, which is where the project's own
+rule says they live.
 """
 
 import math
 import random
+
 from config import (
-    GRAVITY, FLOOR_Y, RESTITUTION, POWER_FACTOR, MAX_PULL,
-    AIR_DRAG, BIRD_BOUNCE, BIRD_LINGER, MIN_DAMAGE_VEL,
-    DAMAGE_FACTOR, BLOCK_HEALTH,
-    BLOCK_IMPACT_DAMAGE, BLOCK_IMPACT_MASS_K,
-    PINCH_THRESHOLD, THREE_FINGER_PINCH_RADIUS, INPUT_MOVEMENT_MAGNIFICATION,
-    Z_CLICK_THRESHOLD_M, Z_CLICK_XY_MAX_PX,
-    BLOCK_COLL_Y_STACK, BLOCK_MATERIALS,
+    BIRD_BOUNCE,
+    BLOCK_COLL_Y_STACK,
+    BLOCK_IMPACT_DAMAGE,
+    BLOCK_IMPACT_MASS_K,
+    BLOCK_MATERIALS,
+    FLOOR_Y,
+    MIN_DAMAGE_VEL,
 )
-
-
 from visual_ai import Vector2, intersect_circle_aabb
+
 
 # ── AABB collision ─────────────────────────────────────────────────────────────
 def bird_hits_block(bird, block) -> bool:
@@ -112,7 +117,8 @@ def _legacy_resolve_block_collision(b1, b2):
         m2 = 1e9
 
     total_mass = m1 + m2
-    if total_mass < 0.001: return
+    if total_mass < 0.001:
+        return
 
     if not is_b1_static and not is_b2_static:
         r1 = m2 / total_mass
@@ -242,11 +248,15 @@ def resolve_block_collision(b1, b2):
         friction = (mat1.get("friction", 0.5) + mat2.get("friction", 0.5)) / 2.0
         tangent_damping = max(0.0, 1.0 - friction * 0.22)
         if nx == 0.0:
-            if not static1: b1.vx *= tangent_damping
-            if not static2: b2.vx *= tangent_damping
+            if not static1:
+                b1.vx *= tangent_damping
+            if not static2:
+                b2.vx *= tangent_damping
         else:
-            if not static1: b1.vy *= tangent_damping
-            if not static2: b2.vy *= tangent_damping
+            if not static1:
+                b1.vy *= tangent_damping
+            if not static2:
+                b2.vy *= tangent_damping
 
     if impact_speed > MIN_DAMAGE_VEL:
         # Collapse damage, weighted by who is hitting whom. A flat figure meant

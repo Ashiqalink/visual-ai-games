@@ -48,13 +48,17 @@ from engine_bootstrap import ensure_engine  # noqa: E402
 
 ensure_engine()
 
-from config import (  # noqa: E402
-    BIRD_ORDER, BIRD_SPECS,
+from config import (
     BIRD_COLOURS as COLOURS,
-    IMPACT_POP_DURATION, SPEED_LINE_THRESHOLD,
-    LIGHTING_SETTINGS,
 )
-from physics import FLOOR_Y  # noqa: E402
+from config import (  # noqa: E402
+    BIRD_ORDER,
+    BIRD_SPECS,
+    FLOOR_Y,  # noqa: E402
+    IMPACT_POP_DURATION,
+    LIGHTING_SETTINGS,
+    SPEED_LINE_THRESHOLD,
+)
 from visual_ai import render_creature  # noqa: E402
 
 #: Rasterisation size, matching ``bird.SPRITE_SIZE`` — sprites are scaled down
@@ -238,9 +242,10 @@ def _draw_impact_pop(screen: pygame.Surface, bird, cx: int, cy: int,
 def main() -> int:
     # Imported here, not at module scope: bird.py pulls in cv2 and rasterises
     # every sprite at import time. The renderer above needs neither.
-    from bird import Bird
-    from config import FRAME_W, FRAME_H, BG_COLOR
     import random
+
+    from bird import Bird
+    from config import BG_COLOR, FRAME_H, FRAME_W
 
     pygame.init()
     pygame.display.set_caption("Birds — pygame renderer")

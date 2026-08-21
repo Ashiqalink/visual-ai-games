@@ -13,21 +13,33 @@ See the sprite section at the bottom of this file.
   - Air drag during flight
 """
 
-import cv2
-import numpy as np
+import collections
 import hashlib
 import math
-import collections
 import os
-from physics import GRAVITY, FLOOR_Y, AIR_DRAG, BIRD_BOUNCE, BIRD_LINGER, magnitude, bird_hits_ground
+
+import cv2
+import numpy as np
 from config import (
-    TRAIL_LEN, SPEED_LINE_THRESHOLD, IMPACT_POP_DURATION, BIRD_IDLE_SPEED,
-    BIRD_ORDER, BIRD_SPECS,
-    BIRD_RADII as RADII, BIRD_MASSES as MASSES, BIRD_COLOURS as COLOURS,
-    LIGHTING_SETTINGS
+    AIR_DRAG,
+    BIRD_BOUNCE,
+    BIRD_IDLE_SPEED,
+    BIRD_LINGER,
+    BIRD_ORDER,
+    BIRD_SPECS,
+    FLOOR_Y,
+    GRAVITY,
+    IMPACT_POP_DURATION,
+    LIGHTING_SETTINGS,
+    SPEED_LINE_THRESHOLD,
+    TRAIL_LEN,
 )
-from visual_ai import Vector2, render_creature, rgb_to_bgr, load_image
-from visual_ai.imaging import blit_sprite, blit_ellipse_alpha
+from config import BIRD_COLOURS as COLOURS
+from config import BIRD_MASSES as MASSES
+from config import BIRD_RADII as RADII
+from physics import bird_hits_ground, magnitude
+from visual_ai import Vector2, load_image, render_creature, rgb_to_bgr
+from visual_ai.imaging import blit_sprite
 
 # Trail length (number of past positions stored)
 _TRAIL_LEN = TRAIL_LEN
@@ -244,7 +256,7 @@ def _sprite_cache_key(kind: str, view: str) -> str:
     creature in config.py — or bumping SPRITE_SIZE — lands on a different file
     and the stale sprite is simply never read again. No manual cache-busting.
     """
-    payload = f"{kind}|{view}|{SPRITE_SIZE}|{BIRD_SPECS[kind]!r}".encode("utf-8")
+    payload = f"{kind}|{view}|{SPRITE_SIZE}|{BIRD_SPECS[kind]!r}".encode()
     return f"{kind}_{view}_{hashlib.sha1(payload).hexdigest()[:12]}.png"
 
 
