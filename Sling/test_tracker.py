@@ -13,10 +13,15 @@ turn the answer inside out without anyone noticing.
 The band-lag estimator is checked the way flappy checks its own: against a band
 series that is the hand series delayed by an exact number of samples.
 """
-import sys, os, math, tempfile, shutil
+import math
+import os
+import shutil
+import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import tracker, tracker_report
+import tracker
+import tracker_report
 
 # Never touch the real Sling/data: the point of that directory is that it holds
 # the user's own play history.
@@ -112,7 +117,7 @@ for want in (0.0, 4.0, -3.0):
     run = tracker.load_runs()[-1]
     got = [tracker_report.release_drift(run, s)[0] for s in run["shots"]]
     print(f"  aim fell {want:+5.1f} deg -> reported "
-          f"{', '.join('%+.2f' % g for g in got)}")
+          f"{', '.join(f'{g:+.2f}' for g in got)}")
     assert all(abs(g - want) < 0.05 for g in got), "drift or its sign is wrong"
 
 print("\npull drift: a collapsing pull must read negative")
@@ -121,7 +126,7 @@ for f in os.listdir(SCRATCH):
 synth(1, 2, drift_deg=0.0, pull_drift=-18.0)
 run = tracker.load_runs()[-1]
 pulls = [tracker_report.release_drift(run, s)[1] for s in run["shots"]]
-print(f"  pull -18 px -> reported {', '.join('%+.2f' % p for p in pulls)}")
+print(f"  pull -18 px -> reported {', '.join(f'{p:+.2f}' for p in pulls)}")
 assert all(abs(p + 18.0) < 0.5 for p in pulls)
 
 print("\nband lag: known delay in samples")

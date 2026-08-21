@@ -1,9 +1,10 @@
-import os
-import sys
 import math
-import time
+import os
 import queue
 import random
+import sys
+import time
+
 import cv2
 import numpy as np
 
@@ -14,12 +15,14 @@ if BASE_DIR not in sys.path:
 sys.path.insert(0, os.path.join(BASE_DIR, '..'))
 
 from engine_bootstrap import ensure_engine
+
 ensure_engine()
+
+from tracker import RunTracker, tracking_enabled
+from visual_ai import VisionPipeline
 
 from gameloop import drain, draw_text, frame_pacer
 from instructions import draw_card
-from tracker import RunTracker, tracking_enabled
-from visual_ai import VisionPipeline
 
 W, H = 800, 600
 

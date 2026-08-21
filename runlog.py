@@ -26,7 +26,6 @@ by accident and the opt-in marker cannot travel with a copy of the game.
 
 from __future__ import annotations
 
-import io
 import json
 import os
 import time
@@ -81,7 +80,7 @@ class RunStore:
     def enable_here(self, note: str = "") -> str:
         """Switch tracking on for this machine by writing the marker."""
         os.makedirs(self.data_dir, exist_ok=True)
-        with io.open(self.marker, "w", encoding="utf-8") as fh:
+        with open(self.marker, "w", encoding="utf-8") as fh:
             fh.write("Run tracking is on for this machine.\n"
                      "Delete this file to turn it off. It is gitignored and never "
                      "travels with the game.\n" + (note and note + "\n"))
@@ -105,8 +104,8 @@ class RunStore:
         os.makedirs(self.data_dir, exist_ok=True)
         path = os.path.join(
             self.data_dir,
-            "runs-%s.jsonl" % time.strftime("%Y-%m-%d", time.localtime()))
-        with io.open(path, "a", encoding="utf-8") as fh:
+            "runs-{}.jsonl".format(time.strftime("%Y-%m-%d", time.localtime())))
+        with open(path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(record) + "\n")
         return path
 
@@ -120,7 +119,7 @@ class RunStore:
                      if n.startswith("runs-") and n.endswith(".jsonl")]
         runs = []
         for path in paths:
-            with io.open(path, encoding="utf-8") as fh:
+            with open(path, encoding="utf-8") as fh:
                 for line_no, line in enumerate(fh, 1):
                     line = line.strip()
                     if not line:

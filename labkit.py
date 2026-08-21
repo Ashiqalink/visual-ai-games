@@ -45,19 +45,17 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from engine_bootstrap import ensure_engine   # noqa: E402
+from engine_bootstrap import ensure_engine  # noqa: E402
 
 ensure_engine()
 
-import cv2                                   # noqa: E402
-import numpy as np                           # noqa: E402
-
-from visual_ai import VisionPipeline         # noqa: E402
+import cv2  # noqa: E402
+import numpy as np  # noqa: E402
+from visual_ai import VisionPipeline  # noqa: E402
 
 # The how-to-play card lives outside the harness so that Sling, flappy and
 # punchy — which are no part of it — can show the same one.
-from instructions import draw_card, draw_hint, wrap   # noqa: E402,F401
-
+from instructions import draw_card, draw_hint, wrap  # noqa: E402,F401
 
 # ── Drawing ───────────────────────────────────────────────────────────────────
 

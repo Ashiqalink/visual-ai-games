@@ -9,10 +9,16 @@ actually does) is checked more loosely: it must land at or below its time
 constant (plus half a frame of quantisation), which is where a real one-pole
 filter's lag sits for a signal with actual bandwidth.
 """
-import sys, os, math, random, tempfile, shutil
+import math
+import os
+import random
+import shutil
+import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import tracker, tracker_report
+import tracker
+import tracker_report
 
 # Never touch the real flappy/data: the point of that directory is that it
 # holds the user's own play history.

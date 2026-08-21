@@ -242,7 +242,7 @@ if _ENGINE_ROOT not in sys.path:
     sys.path.insert(0, _ENGINE_ROOT)
 
 try:
-    from visual_ai import Material, ShaderType, CreatureSpec
+    from visual_ai import CreatureSpec, Material, ShaderType
 except ImportError:
     from dataclasses import dataclass
     from enum import Enum

@@ -3,9 +3,11 @@ test_tflite.py — Verifies TensorFlow Lite (TFLite) delegate execution & MediaP
 """
 
 import time
+
 import cv2
-import numpy as np
 import mediapipe as mp
+import numpy as np
+
 
 def main():
     print("=" * 60)
@@ -29,7 +31,7 @@ def main():
 
     print("[INFO] Warm-up run on TFLite XNNPACK CPU delegate...")
     start_warm = time.time()
-    results = hands.process(dummy_frame)
+    hands.process(dummy_frame)          # the warm-up is the call itself
     warm_time = (time.time() - start_warm) * 1000.0
     print(f"[OK] Warm-up inference time: {warm_time:.2f} ms")
 
@@ -43,7 +45,7 @@ def main():
     fps = 30.0 / total_bench
 
     print("-" * 60)
-    print(f"[SUCCESS] TFLite Model Execution Status : ACTIVE & READY")
+    print("[SUCCESS] TFLite Model Execution Status : ACTIVE & READY")
     print(f"[SUCCESS] Average Inference Time        : {avg_ms:.2f} ms / frame")
     print(f"[SUCCESS] Projected Frame Rate          : {fps:.1f} FPS")
     print("=" * 60)

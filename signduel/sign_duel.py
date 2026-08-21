@@ -24,7 +24,6 @@ Scope: game side. Nothing here changes the engine; it reads `hand_sign` and
 
 from __future__ import annotations
 
-import math
 import os
 import statistics
 import sys

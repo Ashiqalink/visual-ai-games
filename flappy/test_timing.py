@@ -9,7 +9,9 @@ converted numbers still reproduce the feel they replaced: at the ~32.5 fps the
 loop actually ran at, the new per-second speeds and time constants land within
 a couple of percent of the old per-frame ones.
 """
-import sys, os, math
+import math
+import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -40,8 +42,8 @@ for diff in F.DIFFICULTIES:
         assert 70.0 < bird < 95.0, "sample point should be mid-convergence"
     birds = [r[1] for r in results]
     xs = [r[2] for r in results]
-    print(f"  {diff['name']:6s} bird {['%.6f' % b for b in birds]}  "
-          f"pipe x {['%.3f' % x for x in xs]}")
+    print(f"  {diff['name']:6s} bird {[f'{b:.6f}' for b in birds]}  "
+          f"pipe x {[f'{x:.3f}' for x in xs]}")
     assert max(birds) - min(birds) < 1e-9, "bird position depends on frame rate"
     assert max(xs) - min(xs) < 1e-6, "pipe position depends on frame rate"
 

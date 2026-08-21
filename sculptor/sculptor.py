@@ -36,13 +36,11 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-import cv2
 import numpy as np
+from visual_ai import Camera3D, Material, Mesh3D, Renderer3D, Transform3D
 
 import labkit
 from labkit import LabGame, draw_bar, draw_panel, draw_text
-
-from visual_ai import Camera3D, Material, Mesh3D, Renderer3D, Transform3D
 
 MESHES = ("cube", "pyramid", "sphere", "cylinder", "capsule", "torus",
           "prism", "icosahedron")

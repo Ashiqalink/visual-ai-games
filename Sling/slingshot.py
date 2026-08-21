@@ -14,17 +14,21 @@ Visual improvements over the plain line-based version:
   - Snap-back vibration animation on release (unchanged API)
 """
 
+import math
+
 import cv2
 import numpy as np
-import math
-from visual_ai import lerp, Vector2
 from config import (
-    SLING_X, SLING_Y,
-    FORK_SPREAD_X, FORK_RISE_Y, HANDLE_DROP_Y,
-    SLING_WOOD_COLOR, SLING_WOOD_DARK,
-    SLING_ELASTIC_NEAR, SLING_ELASTIC_FAR,
+    FORK_RISE_Y,
+    FORK_SPREAD_X,
+    HANDLE_DROP_Y,
+    SLING_ELASTIC_FAR,
+    SLING_ELASTIC_NEAR,
     SLING_SNAP_DURATION,
+    SLING_X,
+    SLING_Y,
 )
+from visual_ai import Vector2, lerp
 
 # ── Geometry ───────────────────────────────────────────────────────────────────
 FORK_LEFT  = (SLING_X - FORK_SPREAD_X, SLING_Y - FORK_RISE_Y)

@@ -35,10 +35,10 @@ VisionPipeline.emit_person_mask instead.
 """
 
 import os
-import sys
-import time
 import queue
 import random
+import sys
+import time
 
 import cv2
 import numpy as np
@@ -49,12 +49,20 @@ if BASE_DIR not in sys.path:
 sys.path.insert(0, os.path.join(BASE_DIR, '..'))
 
 from engine_bootstrap import ensure_engine
+
 ensure_engine()
 
-from gameloop import drain, draw_text
 from visual_ai import VisionPipeline, cut_out_person
-from visual_ai.imaging import (bgr_to_rgb, clipped_fraction, normalize_lighting,
-                               pad_to, remove_background, resize as resize_rgba)
+from visual_ai.imaging import (
+    bgr_to_rgb,
+    clipped_fraction,
+    normalize_lighting,
+    pad_to,
+    remove_background,
+)
+from visual_ai.imaging import resize as resize_rgba
+
+from gameloop import drain, draw_text
 
 W, H = 800, 600
 TITLE = "Avatar Catch (test harness)"

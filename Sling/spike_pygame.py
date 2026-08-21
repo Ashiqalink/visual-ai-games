@@ -50,14 +50,21 @@ from engine_bootstrap import ensure_engine
 
 ensure_engine()
 
-from visual_ai import (  # noqa: E402
-    VisionPipeline, CPP_ENGINE_AVAILABLE, render_creature,
-)
-
 from config import (  # noqa: E402
-    FRAME_W, FRAME_H, BG_COLOR,
-    CAM_W, CAM_H, CAM_MARGIN,
-    SMOOTH_ALPHA, BIRD_SPECS, BIRD_ORDER,
+    BG_COLOR,
+    BIRD_ORDER,
+    BIRD_SPECS,
+    CAM_H,
+    CAM_MARGIN,
+    CAM_W,
+    FRAME_H,
+    FRAME_W,
+    SMOOTH_ALPHA,
+)
+from visual_ai import (  # noqa: E402
+    CPP_ENGINE_AVAILABLE,
+    VisionPipeline,
+    render_creature,
 )
 
 # config.BG_COLOR is BGR, because everything downstream of it was an OpenCV

@@ -248,7 +248,7 @@ class Conductor(LabGame):
             (tw, _), _ = cv2.getTextSize(self.last_grade, labkit.FONT, 1.6, 4)
             draw_text(canvas, self.last_grade, (self.width - tw) // 2,
                       self.height - 90, 1.6, self.last_grade_colour, 4)
-            detail = ("%+.0f ms  (%s)" % (self.last_err_ms,
+            detail = ("{:+.0f} ms  ({})".format(self.last_err_ms,
                       "early" if self.last_err_ms < 0 else "late"))
             (dw, _), _ = cv2.getTextSize(detail, labkit.FONT, 0.6, 2)
             draw_text(canvas, detail, (self.width - dw) // 2,

@@ -90,7 +90,7 @@ def ensure_engine():
         'The engine repo was not found. These games import it from a sibling\n'
         'folder; cloning this repo on its own is not enough.\n\n'
         'Looked in:\n'
-        + ''.join('    {}\n'.format(p) for p in searched)
+        + ''.join(f'    {p}\n' for p in searched)
         + '\nFix it by cloning the engine next to this repo:\n'
         '    cd "{parent}"\n'
         '    git clone {url} "{name}"\n\n'

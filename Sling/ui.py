@@ -3,44 +3,47 @@ ui.py — HUD, bird carousel, trajectory preview, click-mode indicator,
          score display, level indicator, FPS counter.
 """
 
+import math
+import os
+import sys
+
 import cv2
 import numpy as np
-import math
-import sys
-import os
-import time
 
 # Ensure visual ai game engine imports are accessible
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine', 'src'))
 # ...and the games root, for the shared how-to-play card. main.py already puts
 # it on the path; doing it here too means ui.py imports standalone as well.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-from visual_ai import Renderer3D, Mesh3D, Transform3D, Camera3D, Material, predict_projectile_trajectory
+from bird import Bird
+from config import (
+    AIR_DRAG,
+    CAROUSEL_PANEL_H,
+    CAROUSEL_SPACING,
+    CAROUSEL_Y,
+    FLOOR_Y,
+    GRAVITY,
+    LEVEL_NAMES,
+    LIGHTING_SETTINGS,
+    SHADOW_COL,
+)
+from config import (
+    BIRD_RADII as RADII,
+)
+from config import (
+    HUD_TEXT_COL as HUD_TEXT,
+)
+from visual_ai import (
+    Camera3D,
+    Material,
+    Mesh3D,
+    Renderer3D,
+    Transform3D,
+    predict_projectile_trajectory,
+)
 from visual_ai.imaging import blit_ellipse_alpha
 
 from instructions import draw_card
-
-from bird import Bird
-from config import (
-    GRAVITY, AIR_DRAG,
-    FLOOR_Y,
-    BIRD_ORDER, 
-    BIRD_COLOURS as COLOURS, 
-    BIRD_RADII as RADII,
-    HUD_TEXT_COL as HUD_TEXT,
-    SHADOW_COL,
-    TRAJ_COL,
-    OVERLAY_ALPHA,
-    CAROUSEL_Y,
-    CAROUSEL_SPACING,
-    CAROUSEL_PANEL_H,
-    LEVEL_NAMES,
-    LIGHTING_SETTINGS,
-    # Pinch and fire used to be drawn on the canvas by main.py. They are panel
-    # rows now, and keep their original colours so the meaning carries over.
-    CURSOR_PINCH_COL,
-    CURSOR_FIRE_COL,
-)
 
 #: The engine sets ``click_just_fired`` for exactly one frame. At 60fps that is
 #: 16ms of lit text — too short to read, and the on-canvas "FIRE!" flash that

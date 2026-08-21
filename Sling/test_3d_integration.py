@@ -2,15 +2,16 @@
 test_3d_integration.py — Integration test to verify visual_ai 3D elements in Sling.
 """
 
-import sys
 import os
+import sys
+
 import numpy as np
-import cv2
 
 # Ensure visual ai game engine is on path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine'))
 
-from visual_ai import Renderer3D, Mesh3D, Transform3D, Camera3D, Material
+from visual_ai import Camera3D, Material, Mesh3D, Renderer3D, Transform3D
+
 
 def test_3d_rendering():
     print("[TEST] Initializing 3D Camera and Renderer...")
