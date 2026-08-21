@@ -230,17 +230,11 @@ BIRD_MESH_SHAPES = {
     AZURE: "sphere", IVORY: "capsule",
 }
 
-import os
-import sys
-
-# Ensure visual_ai path is accessible for Material and ShaderType imports
-_ENGINE_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine', 'src'))
-if _ENGINE_SRC not in sys.path:
-    sys.path.insert(0, _ENGINE_SRC)
-_ENGINE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine'))
-if _ENGINE_ROOT not in sys.path:
-    sys.path.insert(0, _ENGINE_ROOT)
-
+# The engine is NOT put on sys.path here: the old inserts pointed inside this
+# repo at a "visual ai game engine" directory that does not exist (the clone is
+# a sibling of the repo, one level further up) and so never did anything.
+# main.py's engine_bootstrap is what actually resolves visual_ai; the fallback
+# below covers standalone imports of this module without it.
 try:
     from visual_ai import CreatureSpec, Material, ShaderType
 except ImportError:

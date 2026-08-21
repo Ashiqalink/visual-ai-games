@@ -5,13 +5,10 @@ block.py — Block with material system (wood/stone/ice), health, gravity,
 
 import math
 import os
-import sys
 
 import cv2
 import numpy as np
 
-# Ensure visual ai game engine imports are accessible
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine', 'src'))
 from config import (
     BLOCK_MATERIALS as MATERIALS,
 )

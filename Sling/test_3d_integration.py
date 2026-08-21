@@ -7,8 +7,13 @@ import sys
 
 import numpy as np
 
-# Ensure visual ai game engine is on path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine'))
+# This runs standalone (play sling-3d-test is not a thing; it is invoked as a
+# script), so resolve the engine the way every game entry does. The old insert
+# here pointed at a directory inside this repo that does not exist.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from engine_bootstrap import ensure_engine
+
+ensure_engine()
 
 from visual_ai import Camera3D, Material, Mesh3D, Renderer3D, Transform3D
 

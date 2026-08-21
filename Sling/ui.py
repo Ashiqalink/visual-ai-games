@@ -10,8 +10,6 @@ import sys
 import cv2
 import numpy as np
 
-# Ensure visual ai game engine imports are accessible
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'visual ai game engine', 'src'))
 # ...and the games root, for the shared how-to-play card. main.py already puts
 # it on the path; doing it here too means ui.py imports standalone as well.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
