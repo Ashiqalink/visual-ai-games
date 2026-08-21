@@ -13,6 +13,11 @@ Usage, from any game directory one level below the repo root:
     ensure_engine()
 
     from visual_ai import VisionPipeline
+
+Style note: this file uses .format() and no modern syntax on purpose. It is
+the one module whose job includes running on an UNSUPPORTED interpreter long
+enough to print why - the version check is here - so it stays parseable
+further back than anything else in the repo.
 """
 
 import os
