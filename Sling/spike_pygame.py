@@ -74,8 +74,8 @@ BG_RGB = tuple(reversed(BG_COLOR))
 
 ACCENT = (80, 200, 255)
 ACCENT_DIM = (40, 100, 128)
-PINCH_COL = (255, 190, 60)
-TEXT_COL = (225, 235, 245)
+PINCH_COLOR = (255, 190, 60)
+TEXT_COLOR = (225, 235, 245)
 TEXT_DIM = (120, 140, 160)
 
 
@@ -238,11 +238,11 @@ def main() -> int:
             rect = sprite.get_rect(center=(int(ix), int(iy)))
             screen.blit(sprite, rect)
 
-            ring = PINCH_COL if is_pinching else ACCENT
+            ring = PINCH_COLOR if is_pinching else ACCENT
             pygame.draw.circle(screen, ring, (int(ix), int(iy)),
                                int(rect.width * 0.62), 3)
             if pinch_pulse > 0:
-                pygame.draw.circle(screen, PINCH_COL, (int(ix), int(iy)),
+                pygame.draw.circle(screen, PINCH_COLOR, (int(ix), int(iy)),
                                    int(rect.width * 0.62 + 40 * (1 - pinch_pulse)),
                                    max(1, int(4 * pinch_pulse)))
         else:
@@ -258,8 +258,8 @@ def main() -> int:
         v_rate = vision_rate.rate
         r_rate = render_rate.rate
         lines = [
-            (f"render   {r_rate:5.1f} fps", TEXT_COL),
-            (f"vision   {v_rate:5.1f} Hz", TEXT_COL),
+            (f"render   {r_rate:5.1f} fps", TEXT_COLOR),
+            (f"vision   {v_rate:5.1f} Hz", TEXT_COLOR),
             (f"ratio    {r_rate / v_rate:4.2f}x decoupled" if v_rate else
              "ratio    waiting", ACCENT),
             (f"payloads {payloads_seen}", TEXT_DIM),
@@ -267,8 +267,8 @@ def main() -> int:
             (f"engine   {'C++ core' if CPP_ENGINE_AVAILABLE else 'py fallback'}",
              TEXT_DIM),
         ]
-        for i, (text, colour) in enumerate(lines):
-            screen.blit(font_small.render(text, True, colour), (30, 28 + i * 20))
+        for i, (text, color) in enumerate(lines):
+            screen.blit(font_small.render(text, True, color), (30, 28 + i * 20))
 
         title = font.render("visual_ai  ->  pygame   (zero cv2 in this file)",
                             True, ACCENT)
@@ -282,7 +282,7 @@ def main() -> int:
             True, TEXT_DIM), (16, 204))
 
         state = "PINCH" if is_pinching else ("TRACKING" if hand_visible else "NO HAND")
-        state_col = PINCH_COL if is_pinching else (
+        state_col = PINCH_COLOR if is_pinching else (
             ACCENT if hand_visible else TEXT_DIM)
         state_surf = font_big.render(state, True, state_col)
         screen.blit(state_surf, (16, FRAME_H - 52))

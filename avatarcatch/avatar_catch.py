@@ -139,7 +139,7 @@ def build_sprite(rgba: np.ndarray, matted: bool,
     # pad_to trims to what the matte actually kept and fits that on a square
     # canvas, so the player is not squashed by the frame's 4:3 aspect. It
     # resizes alpha-aware too — resampling straight alpha would drag
-    # background colour into the soft hair edges MODNet is here to get right.
+    # background color into the soft hair edges MODNet is here to get right.
     sprite = pad_to(rgba, AVATAR_SIZE, fit=1.0)
     kept = float(sprite[..., 3].mean()) / 255.0
     note = (f"{MATTE_BACKEND} matte - {kept:.0%} kept, "

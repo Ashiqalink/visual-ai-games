@@ -125,7 +125,7 @@ class Conductor(LabGame):
         self.speed = 0.0
         self.vx = 0.0
         self.last_grade = ""
-        self.last_grade_colour = (200, 200, 200)
+        self.last_grade_color = (200, 200, 200)
         self.last_err_ms = 0.0
         self.flash = 0.0
         self.score = 0
@@ -165,7 +165,7 @@ class Conductor(LabGame):
         if self.smooth.feed(vx_s, self.speed, self.time):
             err = self._nearest_beat_error(self.time)
             self.errors["smoothed"].append(err * 1000.0)
-            self.last_grade, self.last_grade_colour = self._grade(err)
+            self.last_grade, self.last_grade_color = self._grade(err)
             self.last_err_ms = err * 1000.0
             self.flash = 1.0
             if abs(err) <= GRADE[-1][0]:
@@ -176,9 +176,9 @@ class Conductor(LabGame):
 
     @staticmethod
     def _grade(err):
-        for limit, label, colour in GRADE:
+        for limit, label, color in GRADE:
             if abs(err) <= limit:
-                return label, colour
+                return label, color
         return "MISS", (90, 90, 220)
 
     def render(self, canvas):
@@ -209,9 +209,9 @@ class Conductor(LabGame):
         going_left = sweep < 0.5           # dot is travelling towards `left`
         next_turn = "TURN AT " + ("LEFT" if going_left else "RIGHT")
         near = max(0.0, 1.0 - abs(1.0 - phase) * 5.0)   # ramps up into the beat
-        colour = (150, 235, 255) if near > 0.5 else (110, 120, 140)
+        color = (150, 235, 255) if near > 0.5 else (110, 120, 140)
         (tw, _), _ = cv2.getTextSize(next_turn, labkit.FONT, 0.9, 2)
-        draw_text(canvas, next_turn, (self.width - tw) // 2, 180, 0.9, colour, 2)
+        draw_text(canvas, next_turn, (self.width - tw) // 2, 180, 0.9, color, 2)
 
         for i, (x, y) in enumerate(self.trail):
             a = (i + 1) / len(self.trail)
@@ -247,12 +247,12 @@ class Conductor(LabGame):
         if self.last_grade:
             (tw, _), _ = cv2.getTextSize(self.last_grade, labkit.FONT, 1.6, 4)
             draw_text(canvas, self.last_grade, (self.width - tw) // 2,
-                      self.height - 90, 1.6, self.last_grade_colour, 4)
+                      self.height - 90, 1.6, self.last_grade_color, 4)
             detail = ("{:+.0f} ms  ({})".format(self.last_err_ms,
                       "early" if self.last_err_ms < 0 else "late"))
             (dw, _), _ = cv2.getTextSize(detail, labkit.FONT, 0.6, 2)
             draw_text(canvas, detail, (self.width - dw) // 2,
-                      self.height - 108, 0.6, self.last_grade_colour, 1)
+                      self.height - 108, 0.6, self.last_grade_color, 1)
 
         draw_panel(canvas, 12, self.height - 66, 430, 54)
         s_err = self.errors["smoothed"]

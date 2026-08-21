@@ -187,7 +187,7 @@ def main():
         c = int(40 - (y / H) * 30)
         bg_base[y, :] = (c + 30, c + 10, c)  # Deep blue/purple gradient
 
-    # Full-frame effect layers. Both are constant colours, and both used to be
+    # Full-frame effect layers. Both are constant colors, and both used to be
     # rebuilt inside the loop — the flash allocated a fresh white frame on every
     # frame of every punch, and the stabilizer dim copied the whole frame only
     # to paint over every pixel of the copy.

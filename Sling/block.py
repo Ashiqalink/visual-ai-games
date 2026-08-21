@@ -288,7 +288,7 @@ class Block:
         # Dynamic polygonal contour (corners disappear as block gets damaged)
         corners, inner_cut_edges = self._get_damaged_polygon(cx, cy, w, h, cos_a, sin_a)
 
-        # Material colours & PBR uniforms
+        # Material colors & PBR uniforms
         mat = MATERIALS.get(self.material, MATERIALS["wood"])
         fill_col  = mat["color"]
         dark_col  = mat["dark"]

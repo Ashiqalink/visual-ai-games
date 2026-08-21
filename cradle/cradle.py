@@ -171,31 +171,31 @@ class Cradle(LabGame):
 
         for ring in self.rings:
             fade = max(0.0, 1.0 - ring.age / RING_LIFETIME)
-            colour = (int(90 + 120 * fade), int(160 * fade + 40), 230)
-            cv2.circle(canvas, (int(ring.x), int(ring.y)), RING_RADIUS, colour, 4)
+            color = (int(90 + 120 * fade), int(160 * fade + 40), 230)
+            cv2.circle(canvas, (int(ring.x), int(ring.y)), RING_RADIUS, color, 4)
             cv2.circle(canvas, (int(ring.x), int(ring.y)), int(RING_RADIUS * 0.55),
                        (60, 60, 80), 1)
 
         if self.a and self.b:
             span = math.dist(self.a, self.b)
             taut = span >= MIN_SPAN
-            colour = (120, 240, 200) if taut else (90, 90, 200)
+            color = (120, 240, 200) if taut else (90, 90, 200)
             # A slack string sags; a taut one is straight. Purely cosmetic, but
             # it makes the MIN_SPAN rule legible without a HUD readout.
             sag = max(0.0, (MIN_SPAN - span)) * 0.6
             mid = ((self.a[0] + self.b[0]) // 2,
                    int((self.a[1] + self.b[1]) / 2 + sag))
-            cv2.line(canvas, self.a, mid, colour, 3, cv2.LINE_AA)
-            cv2.line(canvas, mid, self.b, colour, 3, cv2.LINE_AA)
+            cv2.line(canvas, self.a, mid, color, 3, cv2.LINE_AA)
+            cv2.line(canvas, mid, self.b, color, 3, cv2.LINE_AA)
 
         for i, entry in enumerate(self.hands):
             pos = tuple(entry["pinch_pos"])
             slot = entry.get("slot", i)
-            colour = (255, 190, 120) if slot == 0 else (180, 140, 255)
-            cv2.circle(canvas, pos, 26, colour, 3)
-            cv2.circle(canvas, pos, 5, colour, -1)
+            color = (255, 190, 120) if slot == 0 else (180, 140, 255)
+            cv2.circle(canvas, pos, 26, color, 3)
+            cv2.circle(canvas, pos, 5, color, -1)
             draw_text(canvas, f"slot {slot} · {entry.get('handedness', '?')}",
-                      pos[0] - 60, pos[1] - 38, 0.5, colour, 1)
+                      pos[0] - 60, pos[1] - 38, 0.5, color, 1)
 
         draw_panel(canvas, 12, 12, 400, 108)
         draw_text(canvas, f"score {self.score}   missed {self.missed}", 26, 44,

@@ -112,7 +112,7 @@ def engine_src() -> Path | None:
     return None
 
 
-# ── Colour ────────────────────────────────────────────────────────────────────
+# ── Color ────────────────────────────────────────────────────────────────────
 
 def _ansi() -> bool:
     if not sys.stdout.isatty() or os.environ.get("NO_COLOR") is not None:

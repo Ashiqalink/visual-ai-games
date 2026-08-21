@@ -23,13 +23,13 @@ from config import (
     GRAVITY,
     LEVEL_NAMES,
     LIGHTING_SETTINGS,
-    SHADOW_COL,
+    SHADOW_COLOR,
 )
 from config import (
     BIRD_RADII as RADII,
 )
 from config import (
-    HUD_TEXT_COL as HUD_TEXT,
+    HUD_TEXT_COLOR as HUD_TEXT,
 )
 from visual_ai import (
     Camera3D,
@@ -117,7 +117,7 @@ def _text(frame, txt, pos, scale=0.7, col=HUD_TEXT, thickness=1):
     """Draws text with a drop-shadow for legibility."""
     x, y = pos
     cv2.putText(frame, txt, (x+1, y+1), cv2.FONT_HERSHEY_SIMPLEX,
-                scale, SHADOW_COL, thickness+1, cv2.LINE_AA)
+                scale, SHADOW_COLOR, thickness+1, cv2.LINE_AA)
     cv2.putText(frame, txt, (x, y), cv2.FONT_HERSHEY_SIMPLEX,
                 scale, col, thickness, cv2.LINE_AA)
 
@@ -145,10 +145,10 @@ def _draw_star(frame: np.ndarray, cx: int, cy: int, r: int,
     pts = _star_points(cx, cy, r)
     shadow = _star_points(cx + 2, cy + 2, r)
     if filled:
-        cv2.fillPoly(frame, [shadow], SHADOW_COL, cv2.LINE_AA)
+        cv2.fillPoly(frame, [shadow], SHADOW_COLOR, cv2.LINE_AA)
         cv2.fillPoly(frame, [pts], col, cv2.LINE_AA)
     else:
-        cv2.polylines(frame, [shadow], True, SHADOW_COL, thickness + 1, cv2.LINE_AA)
+        cv2.polylines(frame, [shadow], True, SHADOW_COLOR, thickness + 1, cv2.LINE_AA)
         cv2.polylines(frame, [pts], True, col, thickness, cv2.LINE_AA)
 
 
@@ -358,8 +358,8 @@ def draw_settle_ring(frame: np.ndarray,
           col=col, thickness=2)
 
 
-# Sign -> (label, BGR colour). Kept here so the overlay and the HUD panel
-# below cannot drift apart on naming or colour.
+# Sign -> (label, BGR color). Kept here so the overlay and the HUD panel
+# below cannot drift apart on naming or color.
 SIGN_STYLE = {
     "fist":      ("GRAB",    (0, 140, 255)),
     "open_palm": ("RELEASE", (0, 255, 120)),
@@ -379,7 +379,7 @@ def draw_hand_sign_overlay(frame: np.ndarray, gesture: dict):
     sign, the pinch, the fire — is now read off the HAND SIGN CONTROL panel in
     ``draw_hud``, which lives outside the play area. The markers stay because
     they are the only on-canvas confirmation that tracking is following the
-    right fingers; their colour still encodes the current sign.
+    right fingers; their color still encodes the current sign.
     """
     if not gesture or not gesture.get("hand_visible", False):
         return

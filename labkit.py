@@ -145,7 +145,7 @@ class TrackingStatus:
     HOLD = 0.35             # seconds a hand stays "on" after its last sighting
     LOST_GRACE = 1.5        # seconds of no hand before "lost" becomes "off"
 
-    #: state -> (label, BGR colour)
+    #: state -> (label, BGR color)
     _BADGE = {
         "start": ("STARTING", (150, 150, 160)),
         "sim":   ("NO CAMERA", (215, 175, 120)),
@@ -203,10 +203,10 @@ class TrackingStatus:
         return self.seen_frames / self.frames if self.frames else 0.0
 
     def badge(self) -> tuple[str, tuple[int, int, int]]:
-        text, colour = self._BADGE[self.state]
+        text, color = self._BADGE[self.state]
         if self.state == "on" and self.hand_count > 1:
             text = f"{text} x{self.hand_count}"
-        return text, colour
+        return text, color
 
 
 def draw_tracking_badge(img, status: TrackingStatus, margin: int = 14) -> None:
@@ -217,7 +217,7 @@ def draw_tracking_badge(img, status: TrackingStatus, margin: int = 14) -> None:
     the driver has no way to ask a game where its HUD is, so it has to pick a
     spot that is free in all of them.
     """
-    label, colour = status.badge()
+    label, color = status.badge()
     head = "HAND TRACKING"
     (hw, _), _ = cv2.getTextSize(head, FONT, 0.45, 1)
     (lw, _), _ = cv2.getTextSize(label, FONT, 0.5, 1)
@@ -230,15 +230,15 @@ def draw_tracking_badge(img, status: TrackingStatus, margin: int = 14) -> None:
 
     draw_panel(img, x, y, w, h, alpha=0.62, color=(16, 14, 22))
     cv2.rectangle(img, (int(x), int(y)), (int(x + w), int(y + h)),
-                  tuple(int(c * 0.55) for c in colour), 1)
+                  tuple(int(c * 0.55) for c in color), 1)
 
     cy = int(y + h / 2)
     # Hollow while nothing is being tracked, so the state is readable at a
-    # glance and without relying on colour alone.
-    cv2.circle(img, (int(x + 12), cy), 5, colour,
+    # glance and without relying on color alone.
+    cv2.circle(img, (int(x + 12), cy), 5, color,
                -1 if status.state == "on" else 1, cv2.LINE_AA)
     draw_text(img, head, x + dot_w + 4, cy + 5, 0.45, (185, 190, 200), 1)
-    draw_text(img, label, x + dot_w + 4 + hw + gap, cy + 5, 0.5, colour, 1)
+    draw_text(img, label, x + dot_w + 4 + hw + gap, cy + 5, 0.5, color, 1)
 
 
 # ── Frame timing ──────────────────────────────────────────────────────────────

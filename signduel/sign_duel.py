@@ -38,7 +38,7 @@ from labkit import LabGame, draw_bar, draw_panel, draw_text
 SIGNS = ("fist", "open_palm", "point", "peace")
 SIGN_LABEL = {"fist": "FIST", "open_palm": "OPEN PALM", "point": "POINT",
               "peace": "PEACE"}
-SIGN_COLOUR = {"fist": (120, 130, 255), "open_palm": (130, 240, 190),
+SIGN_COLOR = {"fist": (120, 130, 255), "open_palm": (130, 240, 190),
                "point": (255, 200, 120), "peace": (230, 150, 255)}
 
 START_TIME = 3.0
@@ -177,16 +177,16 @@ class SignDuel(LabGame):
         canvas[:] = ((tint, tint // 2, tint // 2) if not self.flash_ok
                      else (tint // 2, tint, tint // 2))
 
-        colour = SIGN_COLOUR[self.target]
+        color = SIGN_COLOR[self.target]
         draw_text(canvas, "SHOW", self.width // 2 - 62, 130, 1.0, (200, 200, 210), 2)
         label = SIGN_LABEL[self.target]
         scale = 2.6
         (tw, _), _ = cv2.getTextSize(label, labkit.FONT, scale, 5)
-        draw_text(canvas, label, (self.width - tw) // 2, 250, scale, colour, 5)
+        draw_text(canvas, label, (self.width - tw) // 2, 250, scale, color, 5)
 
         draw_bar(canvas, 140, 300, self.width - 280, 22,
                  self.remaining / max(1e-3, self.limit),
-                 colour if self.remaining > self.limit * 0.3 else (90, 90, 240))
+                 color if self.remaining > self.limit * 0.3 else (90, 90, 240))
 
         # Live hand readout — the five extension flags are what the classifier
         # sees, so showing them makes a stuck sign diagnosable in place.

@@ -34,7 +34,7 @@ from config import (
     SPEED_LINE_THRESHOLD,
     TRAIL_LEN,
 )
-from config import BIRD_COLOURS as COLOURS
+from config import BIRD_COLORS as COLORS
 from config import BIRD_MASSES as MASSES
 from config import BIRD_RADII as RADII
 from physics import bird_hits_ground, magnitude
@@ -117,7 +117,7 @@ class Bird:
     def draw(self, frame: np.ndarray, scale: float = 1.0):
         cx, cy = int(self.x), int(self.y)
         r = int(self.radius * scale)
-        col = COLOURS[self.kind]
+        col = COLORS[self.kind]
 
         # 0. Ground Drop Shadow under bird
         from ui import draw_ground_shadow  # local: ui imports bird, avoid circular import
@@ -178,7 +178,7 @@ class Bird:
     def _draw_trail(self, frame: np.ndarray):
         """Fading circles along past positions."""
         n = len(self.trail)
-        col = COLOURS[self.kind]
+        col = COLORS[self.kind]
         for i, (tx, ty) in enumerate(self.trail):
             alpha = (i + 1) / (n + 1)
             r = max(2, int(self.radius * 0.25 * alpha))
@@ -211,7 +211,7 @@ class Bird:
         progress = 1.0 - self.impact_timer / IMPACT_POP_DURATION
         pop_r = int(r + progress * 20)
         alpha_val = max(0, 1.0 - progress)
-        col_base = COLOURS[self.kind]
+        col_base = COLORS[self.kind]
         col = (
             min(255, int(col_base[0] * alpha_val) + 50),
             min(255, int(col_base[1] * alpha_val) + 50),

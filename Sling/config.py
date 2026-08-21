@@ -216,7 +216,7 @@ BIRD_DAMAGE = {RUBY: 1.0, AMBER: 1.35, SLATE: 1.7, AZURE: 0.9, IVORY: 1.2}
 # BGR, to match the OpenCV frames these are drawn onto. Kept in step with the
 # RGB values in BIRD_SPECS below — these tint the trail, impact ring and
 # speed lines, so a mismatch shows up as effects that clash with the sprite.
-BIRD_COLOURS = {
+BIRD_COLORS = {
     RUBY:  (58,  74,  226),
     AMBER: (52,  190, 240),
     SLATE: (96,  82,  74),
@@ -286,7 +286,7 @@ except ImportError:
 
 #  BLOCK MATERIALS
 # =============================================================================
-# BGR colour values; health/density per material, and visual_ai Material instance
+# BGR color values; health/density per material, and visual_ai Material instance
 BLOCK_MATERIALS = {
     "wood": {
         "health":  22,
@@ -395,7 +395,7 @@ CHARACTER_3D_MATERIALS = {
 # =============================================================================
 # The cast, as data. Each entry is everything the engine needs to draw that
 # creature from both angles — there is no per-character drawing code anywhere
-# in this game. Change a colour here and the sprite changes; add an entry and
+# in this game. Change a color here and the sprite changes; add an entry and
 # a new bird exists.
 #
 # Deliberately plain designs: dot eyes, a small beak, no brows and no crests.
@@ -457,9 +457,9 @@ LIGHTING_SETTINGS = {
 
 #  UI COLORS & SETTINGS
 # =============================================================================
-HUD_TEXT_COL = (240, 240, 240)
-SHADOW_COL   = (30, 30, 30)
-TRAJ_COL     = (220, 220, 220)
+HUD_TEXT_COLOR = (240, 240, 240)
+SHADOW_COLOR   = (30, 30, 30)
+TRAJ_COLOR     = (220, 220, 220)
 OVERLAY_ALPHA = 0.45
 
 #  CAROUSEL UI
@@ -471,9 +471,9 @@ CAROUSEL_SELECTION_MAX_Y = 220
 
 #  CURSOR SETTINGS
 # =============================================================================
-CURSOR_INDEX_COL = (0, 255, 200)
-CURSOR_PINCH_COL = (0, 200, 255)
-CURSOR_FIRE_COL  = (0, 80, 255)
+CURSOR_INDEX_COLOR = (0, 255, 200)
+CURSOR_PINCH_COLOR = (0, 200, 255)
+CURSOR_FIRE_COLOR  = (0, 80, 255)
 
 #  LEVEL DIMENSIONS
 # =============================================================================

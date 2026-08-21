@@ -198,7 +198,7 @@ class DepthPong(LabGame):
         canvas[:] = (14, 14, 20)
 
         if self.grid is not None:
-            # Depth as a colour field, then the solid cells picked out on top.
+            # Depth as a color field, then the solid cells picked out on top.
             g = np.clip(self.grid, 0.0, 2.5) / 2.5
             field = (np.stack([1.0 - g, g * 0.6, g], axis=-1) * 90).astype(np.uint8)
             canvas[:] = cv2.resize(field, (self.width, self.height),

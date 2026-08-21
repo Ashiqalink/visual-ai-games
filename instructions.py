@@ -28,31 +28,31 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 #: Set once so the card looks the same in every game rather than inheriting each
 #: game's own HUD palette — it is a system screen, not part of the game's art.
-TITLE_COL = (110, 215, 255)
-GOAL_COL = (228, 232, 240)
-HEAD_COL = (120, 235, 190)
-LABEL_COL = (255, 200, 130)
-BODY_COL = (200, 206, 218)
-FOOT_COL = (150, 160, 178)
+TITLE_COLOR = (110, 215, 255)
+GOAL_COLOR = (228, 232, 240)
+HEAD_COLOR = (120, 235, 190)
+LABEL_COLOR = (255, 200, 130)
+BODY_COLOR = (200, 206, 218)
+FOOT_COLOR = (150, 160, 178)
 
 DEFAULT_FOOTER = "press any key to start   ·   H reopens this card"
 
 
-def _text(img, text, x, y, size=0.5, colour=BODY_COL, thickness=1):
+def _text(img, text, x, y, size=0.5, color=BODY_COLOR, thickness=1):
     """Text with a dark outline, so the card stays legible over a bright game."""
     cv2.putText(img, text, (int(x), int(y)), FONT, size, (0, 0, 0),
                 thickness + 3, cv2.LINE_AA)
-    cv2.putText(img, text, (int(x), int(y)), FONT, size, colour, thickness,
+    cv2.putText(img, text, (int(x), int(y)), FONT, size, color, thickness,
                 cv2.LINE_AA)
 
 
-def _plate(img, x, y, w, h, alpha=0.88, colour=(12, 11, 18)):
+def _plate(img, x, y, w, h, alpha=0.88, color=(12, 11, 18)):
     """Translucent backing panel, clipped to the canvas."""
     x, y = max(0, int(x)), max(0, int(y))
     region = img[y:y + int(h), x:x + int(w)]
     if region.size == 0:
         return
-    fill = np.full(region.shape, colour, dtype=np.uint8)
+    fill = np.full(region.shape, color, dtype=np.uint8)
     img[y:y + int(h), x:x + int(w)] = cv2.addWeighted(
         region, 1.0 - alpha, fill, alpha, 0)
 
@@ -126,27 +126,27 @@ def draw_card(canvas, title, goal, controls=(), keys=(), footer=DEFAULT_FOOTER):
     _plate(canvas, x, y, panel_w, panel_h)
     cv2.rectangle(canvas, (x, y), (x + panel_w, y + panel_h), (80, 120, 170), 1)
 
-    _text(canvas, title, x + pad, y + 46, 0.82, TITLE_COL, 2)
+    _text(canvas, title, x + pad, y + 46, 0.82, TITLE_COLOR, 2)
     cv2.line(canvas, (x + pad, y + 62), (x + panel_w - pad, y + 62),
              (55, 75, 105), 1)
 
     ty = y + 92
     for kind, left, right in rows:
         if kind == "goal":
-            _text(canvas, left, x + pad, ty, 0.6, GOAL_COL, 1)
+            _text(canvas, left, x + pad, ty, 0.6, GOAL_COLOR, 1)
         elif kind == "head":
-            _text(canvas, left, x + pad, ty, 0.5, HEAD_COL, 1)
+            _text(canvas, left, x + pad, ty, 0.5, HEAD_COLOR, 1)
         elif kind == "row":
             if left:
-                cv2.circle(canvas, (x + pad + 4, ty - 5), 3, TITLE_COL, -1,
+                cv2.circle(canvas, (x + pad + 4, ty - 5), 3, TITLE_COLOR, -1,
                            cv2.LINE_AA)
-                _text(canvas, left, x + pad + 18, ty, 0.5, LABEL_COL, 1)
-            _text(canvas, right, x + pad + label_x, ty, 0.5, BODY_COL, 1)
+                _text(canvas, left, x + pad + 18, ty, 0.5, LABEL_COLOR, 1)
+            _text(canvas, right, x + pad + label_x, ty, 0.5, BODY_COLOR, 1)
         elif kind == "foot":
-            _text(canvas, left, x + pad, ty, 0.45, FOOT_COL, 1)
+            _text(canvas, left, x + pad, ty, 0.45, FOOT_COLOR, 1)
         ty += line_h
 
 
-def draw_hint(canvas, text="H  how to play", colour=(130, 140, 160)):
+def draw_hint(canvas, text="H  how to play", color=(130, 140, 160)):
     """The one-line reminder left on screen once the card is dismissed."""
-    _text(canvas, text, 20, canvas.shape[0] - 16, 0.45, colour, 1)
+    _text(canvas, text, 20, canvas.shape[0] - 16, 0.45, color, 1)
